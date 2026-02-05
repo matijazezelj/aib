@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test -timeout 60s -race ./...
+
+      - name: Build binaries
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          GOFLAGS="-trimpath"
+
+          GOOS=linux GOARCH=amd64 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o dist/aib-linux-amd64 ./cmd/aib
+          GOOS=darwin GOARCH=arm64 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o dist/aib-darwin-arm64 ./cmd/aib
+
+          cd dist
+          sha256sum aib-* > checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          files: |
+            dist/aib-linux-amd64
+            dist/aib-darwin-arm64
+            dist/checksums.txt
