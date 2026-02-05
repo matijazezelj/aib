@@ -3,3 +3,10 @@ bin/
 data/
 *.db
 .env
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
