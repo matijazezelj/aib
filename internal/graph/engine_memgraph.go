@@ -139,40 +139,7 @@ func (e *MemgraphEngine) BlastRadiusTree(ctx context.Context, startNodeID string
 		rootNode = recordToNode(rootResult.Record())
 	}
 
-	// Get all edges in the upstream subgraph
-	edgeResult, err := session.Run(ctx, `
-		MATCH (a:Asset)-[r:EDGE]->(b:Asset)
-		WHERE (a)-[*0..]->(root:Asset {id: $startID})
-		  AND (b)-[*0..]->(root:Asset {id: $startID})
-		RETURN a.id AS from_id, r.type AS edge_type, b.id AS to_id
-	`, map[string]any{"startID": startNodeID})
-	if err != nil {
-		e.logger.Warn("memgraph tree edge query failed, falling back", "error", err)
-		return e.fallback.BlastRadiusTree(ctx, startNodeID)
-	}
-
-	// Build upstream adjacency: map[to_id] → list of (from_id, edge_type)
-	upstream := make(map[string][]mgEdgeInfo)
-
-	for edgeResult.Next(ctx) {
-		rec := edgeResult.Record()
-		fromID, _ := rec.Get("from_id")
-		toID, _ := rec.Get("to_id")
-		edgeType, _ := rec.Get("edge_type")
-		if fromID != nil && toID != nil {
-			upstream[toID.(string)] = append(upstream[toID.(string)], mgEdgeInfo{
-				fromID:   fromID.(string),
-				edgeType: models.EdgeType(toString(edgeType)),
-			})
-		}
-	}
-
-	if err := edgeResult.Err(); err != nil {
-		e.logger.Warn("memgraph edge result error, falling back", "error", err)
-		return e.fallback.BlastRadiusTree(ctx, startNodeID)
-	}
-
-	// Fetch all affected nodes
+	// Fetch all affected nodes (upstream traversal)
 	nodeMap := make(map[string]*models.Node)
 	if rootNode != nil {
 		nodeMap[rootNode.ID] = rootNode
@@ -191,9 +158,46 @@ func (e *MemgraphEngine) BlastRadiusTree(ctx context.Context, startNodeID string
 		e.logger.Warn("memgraph affected nodes query failed, falling back", "error", err)
 		return e.fallback.BlastRadiusTree(ctx, startNodeID)
 	}
+
+	var affectedIDs []string
 	for nodesResult.Next(ctx) {
 		n := recordToNode(nodesResult.Record())
 		nodeMap[n.ID] = n
+		affectedIDs = append(affectedIDs, n.ID)
+	}
+
+	// Collect all node IDs in the subgraph (affected + root)
+	allIDs := append(affectedIDs, startNodeID)
+
+	// Fetch all edges between nodes in the affected subgraph
+	edgeResult, err := session.Run(ctx, `
+		MATCH (a:Asset)-[r:EDGE]->(b:Asset)
+		WHERE a.id IN $ids AND b.id IN $ids
+		RETURN a.id AS from_id, r.type AS edge_type, b.id AS to_id
+	`, map[string]any{"ids": allIDs})
+	if err != nil {
+		e.logger.Warn("memgraph tree edge query failed, falling back", "error", err)
+		return e.fallback.BlastRadiusTree(ctx, startNodeID)
+	}
+
+	// Build upstream adjacency: map[to_id] → list of (from_id, edge_type)
+	upstream := make(map[string][]mgEdgeInfo)
+	for edgeResult.Next(ctx) {
+		rec := edgeResult.Record()
+		fromID, _ := rec.Get("from_id")
+		toID, _ := rec.Get("to_id")
+		edgeType, _ := rec.Get("edge_type")
+		if fromID != nil && toID != nil {
+			upstream[toID.(string)] = append(upstream[toID.(string)], mgEdgeInfo{
+				fromID:   fromID.(string),
+				edgeType: models.EdgeType(toString(edgeType)),
+			})
+		}
+	}
+
+	if err := edgeResult.Err(); err != nil {
+		e.logger.Warn("memgraph edge result error, falling back", "error", err)
+		return e.fallback.BlastRadiusTree(ctx, startNodeID)
 	}
 
 	// Build tree using the upstream edges
