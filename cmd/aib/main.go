@@ -16,6 +16,7 @@ import (
 	"github.com/matijazezelj/aib/internal/graph"
 	"github.com/matijazezelj/aib/internal/parser"
 	"github.com/matijazezelj/aib/internal/parser/ansible"
+	"github.com/matijazezelj/aib/internal/parser/kubernetes"
 	"github.com/matijazezelj/aib/internal/parser/terraform"
 	"github.com/matijazezelj/aib/internal/server"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -118,6 +119,7 @@ func scanCmd() *cobra.Command {
 
 	cmd.AddCommand(scanTerraformCmd())
 	cmd.AddCommand(scanAnsibleCmd())
+	cmd.AddCommand(scanK8sCmd())
 	return cmd
 }
 
@@ -259,6 +261,76 @@ func scanAnsibleCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&playbooks, "playbooks", "", "directory containing Ansible playbooks to analyze")
+	return cmd
+}
+
+func scanK8sCmd() *cobra.Command {
+	var valuesFile string
+	var helm bool
+
+	cmd := &cobra.Command{
+		Use:   "kubernetes <path>",
+		Short: "Scan Kubernetes manifests or Helm charts",
+		Aliases: []string{"k8s"},
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, _ := openStore()
+			defer store.Close()
+			ctx := cmd.Context()
+
+			path := args[0]
+
+			scanID, _ := store.RecordScan(ctx, graph.Scan{
+				Source:     "kubernetes",
+				SourcePath: path,
+				StartedAt:  time.Now(),
+				Status:     "running",
+			})
+
+			var result *parser.ParseResult
+			var err error
+
+			if helm {
+				fmt.Printf("Rendering Helm chart at %s...\n", path)
+				result, err = kubernetes.RenderHelm(ctx, path, valuesFile)
+			} else {
+				p := kubernetes.NewK8sParser(valuesFile)
+				if !p.Supported(path) {
+					store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					return fmt.Errorf("path %q is not a supported Kubernetes source", path)
+				}
+				fmt.Printf("Scanning Kubernetes manifests at %s...\n", path)
+				result, err = p.Parse(ctx, path)
+			}
+
+			if err != nil {
+				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				return fmt.Errorf("parsing: %w", err)
+			}
+
+			for _, n := range result.Nodes {
+				if err := store.UpsertNode(ctx, n); err != nil {
+					logger.Warn("failed to store node", "id", n.ID, "error", err)
+				}
+			}
+			for _, e := range result.Edges {
+				if err := store.UpsertEdge(ctx, e); err != nil {
+					logger.Warn("failed to store edge", "id", e.ID, "error", err)
+				}
+			}
+
+			store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+
+			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
+			for _, w := range result.Warnings {
+				fmt.Printf("  warning: %s\n", w)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&helm, "helm", false, "render Helm chart via 'helm template' before parsing")
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Helm values file (used with --helm)")
 	return cmd
 }
 

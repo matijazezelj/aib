@@ -44,6 +44,14 @@ make build
 ./bin/aib scan terraform /path/to/terraform/project --remote
 ```
 
+### Scan Kubernetes manifests
+
+```bash
+./bin/aib scan k8s /path/to/manifests/
+./bin/aib scan k8s /path/to/helm/chart --helm
+./bin/aib scan k8s /path/to/helm/chart --helm --values=values-prod.yaml
+```
+
 ### Scan an Ansible inventory
 
 ```bash
@@ -128,6 +136,32 @@ aib scan terraform /path/to/terraform/project --remote --workspace='*'
 ```
 
 This requires the `terraform` CLI to be installed and the project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
+
+#### Kubernetes / Helm
+
+Scan Kubernetes YAML manifests or Helm charts to map workloads, services, ingresses, secrets, and their dependencies:
+
+```bash
+# Single manifest file
+aib scan k8s deployment.yaml
+
+# Directory of manifests (recursive)
+aib scan k8s /path/to/k8s/manifests/
+
+# Helm chart (renders via helm template, then parses)
+aib scan k8s /path/to/chart --helm
+aib scan k8s /path/to/chart --helm --values=values-prod.yaml
+```
+
+AIB discovers the following relationships:
+- **Service → Pod**: label selector matching (`member_of`)
+- **Ingress → Service**: backend routing rules (`routes_to`)
+- **Ingress → Secret**: TLS termination (`terminates_tls`)
+- **Deployment → Secret**: volume mounts, envFrom, env valueFrom (`mounts_secret`)
+- **Deployment → ConfigMap**: volume mounts, envFrom (`depends_on`)
+- **Certificate → Secret**: cert-manager CRD (`depends_on`)
+
+This enables blast radius queries like "what breaks if the TLS cert secret expires?" — showing the ingress, deployment, and certificate are all affected.
 
 #### Ansible
 
@@ -394,6 +428,20 @@ AIB maps Terraform resource types to asset types:
 | TLS | `tls_self_signed_cert`, `acme_certificate` | `certificate` |
 
 Edges are created from `dependencies` in `.tfstate` and from attribute references (network, subnetwork, vpc_id).
+
+### Kubernetes
+
+| Resource Kind | Asset Type | Edges Created |
+|--------------|------------|---------------|
+| `Deployment`, `StatefulSet`, `DaemonSet` | `pod` | `member_of` Service, `mounts_secret`, `depends_on` ConfigMap |
+| `Service` | `service` | matched to Pods via label selector |
+| `Ingress` | `ingress` | `routes_to` Service, `terminates_tls` Secret |
+| `Secret` | `secret` | referenced by workloads and ingresses |
+| `ConfigMap` | `secret` | referenced by workloads |
+| `Namespace` | `namespace` | — |
+| `Certificate` (cert-manager) | `certificate` | `depends_on` Secret |
+
+Helm charts are supported via `--helm` flag (shells out to `helm template`).
 
 ### Ansible
 
