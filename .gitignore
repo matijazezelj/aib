@@ -1,4 +1,5 @@
 bin/
+/aib
 data/
 *.db
 .env

@@ -38,6 +38,12 @@ make build
 ./bin/aib scan terraform /path/to/terraform.tfstate
 ```
 
+### Scan from a remote backend
+
+```bash
+./bin/aib scan terraform /path/to/terraform/project --remote
+```
+
 ### View the graph
 
 ```bash
@@ -98,6 +104,23 @@ AIB supports scanning directories containing multiple `.tfstate` files:
 ```bash
 aib scan terraform /path/to/terraform/directory/
 ```
+
+#### Remote State
+
+Pull state directly from remote backends (S3, GCS, Azure, etc.) using `terraform state pull`:
+
+```bash
+# Pull from the current/default workspace
+aib scan terraform /path/to/terraform/project --remote
+
+# Pull from a specific workspace
+aib scan terraform /path/to/terraform/project --remote --workspace=production
+
+# Pull from all workspaces and merge results
+aib scan terraform /path/to/terraform/project --remote --workspace='*'
+```
+
+This requires the `terraform` CLI to be installed and the project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
 
 ### Querying the Graph
 

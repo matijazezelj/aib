@@ -14,6 +14,7 @@ import (
 	"github.com/matijazezelj/aib/internal/certs"
 	"github.com/matijazezelj/aib/internal/config"
 	"github.com/matijazezelj/aib/internal/graph"
+	"github.com/matijazezelj/aib/internal/parser"
 	"github.com/matijazezelj/aib/internal/parser/terraform"
 	"github.com/matijazezelj/aib/internal/server"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -119,9 +120,12 @@ func scanCmd() *cobra.Command {
 }
 
 func scanTerraformCmd() *cobra.Command {
-	return &cobra.Command{
+	var remote bool
+	var workspace string
+
+	cmd := &cobra.Command{
 		Use:   "terraform <path>",
-		Short: "Scan Terraform state files or directories",
+		Short: "Scan Terraform state files, directories, or remote backends",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, _ := openStore()
@@ -129,11 +133,6 @@ func scanTerraformCmd() *cobra.Command {
 			ctx := cmd.Context()
 
 			path := args[0]
-			parser := terraform.NewStateParser()
-
-			if !parser.Supported(path) {
-				return fmt.Errorf("path %q is not a supported Terraform source", path)
-			}
 
 			scanID, _ := store.RecordScan(ctx, graph.Scan{
 				Source:     "terraform",
@@ -142,8 +141,31 @@ func scanTerraformCmd() *cobra.Command {
 				Status:     "running",
 			})
 
-			fmt.Printf("Scanning Terraform state at %s...\n", path)
-			result, err := parser.Parse(ctx, path)
+			var result *parser.ParseResult
+			var err error
+
+			if remote {
+				if workspace == "*" {
+					fmt.Printf("Pulling state from all workspaces in %s...\n", path)
+					result, err = terraform.PullAllWorkspaces(ctx, path)
+				} else {
+					wsLabel := "default"
+					if workspace != "" {
+						wsLabel = workspace
+					}
+					fmt.Printf("Pulling remote state from %s (workspace: %s)...\n", path, wsLabel)
+					result, err = terraform.PullRemoteState(ctx, path, workspace)
+				}
+			} else {
+				p := terraform.NewStateParser()
+				if !p.Supported(path) {
+					store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					return fmt.Errorf("path %q is not a supported Terraform source", path)
+				}
+				fmt.Printf("Scanning Terraform state at %s...\n", path)
+				result, err = p.Parse(ctx, path)
+			}
+
 			if err != nil {
 				store.UpdateScan(ctx, scanID, "failed", 0, 0)
 				return fmt.Errorf("parsing: %w", err)
@@ -169,6 +191,10 @@ func scanTerraformCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&remote, "remote", false, "pull state from remote backend via 'terraform state pull'")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "terraform workspace to pull (use '*' for all workspaces)")
+	return cmd
 }
 
 // --- graph ---

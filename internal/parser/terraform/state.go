@@ -2,12 +2,10 @@ package terraform
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/matijazezelj/aib/internal/parser"
 	"github.com/matijazezelj/aib/pkg/models"
@@ -91,106 +89,7 @@ func parseStateFile(path string) (*parser.ParseResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading file: %w", err)
 	}
-
-	var state tfState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("parsing JSON: %w", err)
-	}
-
-	result := &parser.ParseResult{}
-	now := time.Now()
-
-	// First pass: build a mapping from TF resource ref (e.g. "google_compute_network.prod_vpc")
-	// to the actual node ID (e.g. "tf:network:prod-vpc") so edges resolve correctly.
-	refToNodeID := make(map[string]string)
-
-	for _, res := range state.Resources {
-		if res.Mode == "data" {
-			continue
-		}
-		assetType := mapResourceType(res.Type)
-		if assetType == "" {
-			continue
-		}
-		for _, inst := range res.Instances {
-			nodeID := fmt.Sprintf("tf:%s:%s", assetType, res.Name)
-			if n, ok := inst.Attributes["name"].(string); ok && n != "" {
-				nodeID = fmt.Sprintf("tf:%s:%s", assetType, n)
-			}
-			ref := res.Type + "." + res.Name
-			refToNodeID[ref] = nodeID
-		}
-	}
-
-	// Second pass: create nodes and edges.
-	for _, res := range state.Resources {
-		if res.Mode == "data" {
-			continue
-		}
-
-		assetType := mapResourceType(res.Type)
-		if assetType == "" {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("unmapped resource type: %s.%s", res.Type, res.Name))
-			continue
-		}
-
-		provider := extractProvider(res.Provider)
-
-		for _, inst := range res.Instances {
-			nodeID := fmt.Sprintf("tf:%s:%s", assetType, res.Name)
-			name := res.Name
-			if n, ok := inst.Attributes["name"].(string); ok && n != "" {
-				name = n
-				nodeID = fmt.Sprintf("tf:%s:%s", assetType, n)
-			}
-
-			node := models.Node{
-				ID:         nodeID,
-				Name:       name,
-				Type:       assetType,
-				Source:     "terraform",
-				SourceFile: path,
-				Provider:   provider,
-				Metadata:   extractMetadata(res.Type, inst.Attributes),
-				LastSeen:   now,
-				FirstSeen:  now,
-			}
-
-			// Handle certificate expiry
-			if assetType == models.AssetCertificate {
-				if exp, ok := inst.Attributes["not_after"].(string); ok {
-					if t, err := time.Parse(time.RFC3339, exp); err == nil {
-						node.ExpiresAt = &t
-					}
-				}
-			}
-
-			result.Nodes = append(result.Nodes, node)
-
-			// Create edges from dependencies using the ref→nodeID map.
-			for _, dep := range inst.Dependencies {
-				depNodeID, ok := refToNodeID[dep]
-				if !ok {
-					continue
-				}
-				edgeID := fmt.Sprintf("%s->depends_on->%s", nodeID, depNodeID)
-				result.Edges = append(result.Edges, models.Edge{
-					ID:     edgeID,
-					FromID: nodeID,
-					ToID:   depNodeID,
-					Type:   models.EdgeDependsOn,
-					Metadata: map[string]string{
-						"source": "tfstate_dependency",
-					},
-				})
-			}
-
-			// Create edges from attribute references
-			createAttributeEdges(nodeID, res.Type, inst.Attributes, result, refToNodeID)
-		}
-	}
-
-	return result, nil
+	return parseStateBytes(data, path)
 }
 
 func mapResourceType(tfType string) models.AssetType {
