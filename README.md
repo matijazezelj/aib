@@ -44,6 +44,13 @@ make build
 ./bin/aib scan terraform /path/to/terraform/project --remote
 ```
 
+### Scan an Ansible inventory
+
+```bash
+./bin/aib scan ansible /path/to/inventory.ini
+./bin/aib scan ansible /path/to/inventory.yml --playbooks=/path/to/playbooks/
+```
+
 ### View the graph
 
 ```bash
@@ -121,6 +128,32 @@ aib scan terraform /path/to/terraform/project --remote --workspace='*'
 ```
 
 This requires the `terraform` CLI to be installed and the project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
+
+#### Ansible
+
+Scan Ansible inventory files (INI or YAML format) to discover hosts, containers, and services:
+
+```bash
+# INI inventory
+aib scan ansible /etc/ansible/hosts
+
+# YAML inventory
+aib scan ansible inventory.yml
+
+# With playbook analysis (discovers containers, services, and managed_by edges)
+aib scan ansible inventory.ini --playbooks=./playbooks/
+
+# Scan a directory containing inventory files
+aib scan ansible /path/to/inventory/
+```
+
+AIB parses Ansible inventories to discover:
+- **Hosts** as VM nodes (`ansible:vm:<hostname>`)
+- **Group memberships** and host variables stored as metadata
+- **Docker containers** from `docker_container` tasks with `managed_by` edges to target hosts
+- **System services** from `service` tasks with `managed_by` edges
+
+Both INI and YAML inventory formats are detected automatically.
 
 ### Querying the Graph
 
@@ -361,6 +394,16 @@ AIB maps Terraform resource types to asset types:
 | TLS | `tls_self_signed_cert`, `acme_certificate` | `certificate` |
 
 Edges are created from `dependencies` in `.tfstate` and from attribute references (network, subnetwork, vpc_id).
+
+### Ansible
+
+| Source | Discovered Asset | Asset Type |
+|--------|-----------------|------------|
+| Inventory host | Host machine | `vm` |
+| `docker_container` task | Docker container | `container` |
+| `service` task | System service | `service` |
+
+Edges (`managed_by`) are created from playbook task analysis, linking containers and services to the hosts they run on.
 
 ## Development
 

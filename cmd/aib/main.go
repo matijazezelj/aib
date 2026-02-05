@@ -15,6 +15,7 @@ import (
 	"github.com/matijazezelj/aib/internal/config"
 	"github.com/matijazezelj/aib/internal/graph"
 	"github.com/matijazezelj/aib/internal/parser"
+	"github.com/matijazezelj/aib/internal/parser/ansible"
 	"github.com/matijazezelj/aib/internal/parser/terraform"
 	"github.com/matijazezelj/aib/internal/server"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -116,6 +117,7 @@ func scanCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(scanTerraformCmd())
+	cmd.AddCommand(scanAnsibleCmd())
 	return cmd
 }
 
@@ -194,6 +196,69 @@ func scanTerraformCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&remote, "remote", false, "pull state from remote backend via 'terraform state pull'")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "terraform workspace to pull (use '*' for all workspaces)")
+	return cmd
+}
+
+func scanAnsibleCmd() *cobra.Command {
+	var playbooks string
+
+	cmd := &cobra.Command{
+		Use:   "ansible <inventory-path>",
+		Short: "Scan Ansible inventory and playbooks for infrastructure assets",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, _ := openStore()
+			defer store.Close()
+			ctx := cmd.Context()
+
+			inventoryPath := args[0]
+
+			scanID, _ := store.RecordScan(ctx, graph.Scan{
+				Source:     "ansible",
+				SourcePath: inventoryPath,
+				StartedAt:  time.Now(),
+				Status:     "running",
+			})
+
+			p := ansible.NewAnsibleParser(playbooks)
+			if !p.Supported(inventoryPath) {
+				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				return fmt.Errorf("path %q is not a supported Ansible inventory", inventoryPath)
+			}
+
+			fmt.Printf("Scanning Ansible inventory at %s...\n", inventoryPath)
+			if playbooks != "" {
+				fmt.Printf("  Playbooks directory: %s\n", playbooks)
+			}
+
+			result, err := p.Parse(ctx, inventoryPath)
+			if err != nil {
+				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				return fmt.Errorf("parsing: %w", err)
+			}
+
+			for _, n := range result.Nodes {
+				if err := store.UpsertNode(ctx, n); err != nil {
+					logger.Warn("failed to store node", "id", n.ID, "error", err)
+				}
+			}
+			for _, e := range result.Edges {
+				if err := store.UpsertEdge(ctx, e); err != nil {
+					logger.Warn("failed to store edge", "id", e.ID, "error", err)
+				}
+			}
+
+			store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+
+			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
+			for _, w := range result.Warnings {
+				fmt.Printf("  warning: %s\n", w)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&playbooks, "playbooks", "", "directory containing Ansible playbooks to analyze")
 	return cmd
 }
 
