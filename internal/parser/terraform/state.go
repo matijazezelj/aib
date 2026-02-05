@@ -157,6 +157,66 @@ func mapResourceType(tfType string) models.AssetType {
 		"tls_self_signed_cert":            models.AssetCertificate,
 		"tls_locally_signed_cert":         models.AssetCertificate,
 		"acme_certificate":                models.AssetCertificate,
+		// GCP IAM
+		"google_storage_bucket_iam_binding":   models.AssetIAMBinding,
+		"google_storage_bucket_iam_policy":    models.AssetIAMPolicy,
+		"google_storage_bucket_iam_member":    models.AssetIAMBinding,
+		"google_project_iam_binding":          models.AssetIAMBinding,
+		"google_project_iam_member":           models.AssetIAMBinding,
+		"google_project_iam_policy":           models.AssetIAMPolicy,
+		"google_service_account_iam_binding":  models.AssetIAMBinding,
+		"google_service_account_iam_policy":   models.AssetIAMPolicy,
+		"google_kms_crypto_key_iam_binding":   models.AssetIAMBinding,
+		"google_kms_crypto_key_iam_policy":    models.AssetIAMPolicy,
+		"google_kms_key_ring_iam_binding":     models.AssetIAMBinding,
+		"google_kms_key_ring_iam_member":      models.AssetIAMBinding,
+		// AWS IAM
+		"aws_iam_role":                            models.AssetServiceAccount,
+		"aws_iam_role_policy_attachment":           models.AssetIAMBinding,
+		"aws_iam_policy":                           models.AssetIAMPolicy,
+		"aws_iam_policy_attachment":                models.AssetIAMBinding,
+		"aws_iam_user":                             models.AssetServiceAccount,
+		"aws_iam_user_policy_attachment":           models.AssetIAMBinding,
+		"aws_iam_user_group_membership":            models.AssetIAMBinding,
+		"aws_iam_group":                            models.AssetIAMGroup,
+		"aws_iam_group_membership":                 models.AssetIAMBinding,
+		"aws_iam_group_policy_attachment":           models.AssetIAMBinding,
+		// Azure IAM
+		"azurerm_role_assignment":             models.AssetIAMBinding,
+		// KMS
+		"google_kms_key_ring":                models.AssetKMSKey,
+		"google_kms_crypto_key":              models.AssetKMSKey,
+		"aws_kms_key":                        models.AssetKMSKey,
+		"azurerm_key_vault_key":              models.AssetKMSKey,
+		// Service Accounts / Identity
+		"google_service_account":             models.AssetServiceAccount,
+		// CDN
+		"aws_cloudfront_distribution":             models.AssetCDN,
+		"aws_cloudfront_origin_access_identity":   models.AssetServiceAccount,
+		"google_compute_backend_bucket":            models.AssetCDN,
+		// Compute Disks
+		"google_compute_disk":                models.AssetDisk,
+		"aws_ebs_volume":                     models.AssetDisk,
+		"azurerm_managed_disk":               models.AssetDisk,
+		// Instance Groups / Auto-scaling
+		"google_compute_instance_group":           models.AssetInstanceGroup,
+		"google_compute_instance_group_manager":   models.AssetInstanceGroup,
+		"aws_autoscaling_group":                   models.AssetInstanceGroup,
+		// Health Checks / Backend Services
+		"google_compute_health_check":             models.AssetHealthCheck,
+		"google_compute_region_backend_service":    models.AssetBackendService,
+		"google_compute_backend_service":           models.AssetBackendService,
+		// S3 Bucket sub-resources (config of parent bucket)
+		"aws_s3_bucket_acl":                       models.AssetIAMPolicy,
+		"aws_s3_bucket_cors_configuration":         models.AssetBucket,
+		"aws_s3_bucket_lifecycle_configuration":    models.AssetBucket,
+		"aws_s3_bucket_logging":                    models.AssetBucket,
+		"aws_s3_bucket_policy":                     models.AssetIAMPolicy,
+		"aws_s3_bucket_versioning":                 models.AssetBucket,
+		"aws_s3_bucket_ownership_controls":         models.AssetBucket,
+		"aws_s3_bucket_replication_configuration":  models.AssetBucket,
+		// Monitoring
+		"pingdom_check":                      models.AssetMonitor,
 		// Kubernetes (via TF provider)
 		"kubernetes_namespace":            models.AssetNamespace,
 		"kubernetes_service":              models.AssetService,
@@ -218,51 +278,43 @@ func extractMetadata(resourceType string, attrs map[string]any) map[string]strin
 
 func createAttributeEdges(nodeID string, resourceType string, attrs map[string]any, result *parser.ParseResult, refToNodeID map[string]string) {
 	// Helper: try to resolve a resource path/name to a known node ID.
-	resolveTarget := func(attrVal string, fallbackType models.AssetType) string {
+	// Returns "" if the target node is not found in the current state.
+	resolveTarget := func(attrVal string) string {
 		name := lastSegment(attrVal)
-		// Check if any known node ID ends with this name.
 		for _, nid := range refToNodeID {
 			if strings.HasSuffix(nid, ":"+name) {
 				return nid
 			}
 		}
-		return fmt.Sprintf("tf:%s:%s", fallbackType, name)
+		return ""
+	}
+
+	addEdge := func(targetID, via string) {
+		if targetID == "" {
+			return
+		}
+		result.Edges = append(result.Edges, models.Edge{
+			ID:       fmt.Sprintf("%s->connects_to->%s", nodeID, targetID),
+			FromID:   nodeID,
+			ToID:     targetID,
+			Type:     models.EdgeConnectsTo,
+			Metadata: map[string]string{"via": via},
+		})
 	}
 
 	// Network reference edges
 	if network, ok := attrs["network"].(string); ok && network != "" {
-		targetID := resolveTarget(network, models.AssetNetwork)
-		result.Edges = append(result.Edges, models.Edge{
-			ID:       fmt.Sprintf("%s->connects_to->%s", nodeID, targetID),
-			FromID:   nodeID,
-			ToID:     targetID,
-			Type:     models.EdgeConnectsTo,
-			Metadata: map[string]string{"via": "network"},
-		})
+		addEdge(resolveTarget(network), "network")
 	}
 
 	// Subnetwork reference edges
 	if subnet, ok := attrs["subnetwork"].(string); ok && subnet != "" {
-		targetID := resolveTarget(subnet, models.AssetSubnet)
-		result.Edges = append(result.Edges, models.Edge{
-			ID:       fmt.Sprintf("%s->connects_to->%s", nodeID, targetID),
-			FromID:   nodeID,
-			ToID:     targetID,
-			Type:     models.EdgeConnectsTo,
-			Metadata: map[string]string{"via": "subnetwork"},
-		})
+		addEdge(resolveTarget(subnet), "subnetwork")
 	}
 
 	// VPC/subnet ID references (AWS style)
 	if vpcID, ok := attrs["vpc_id"].(string); ok && vpcID != "" {
-		targetID := resolveTarget(vpcID, models.AssetNetwork)
-		result.Edges = append(result.Edges, models.Edge{
-			ID:       fmt.Sprintf("%s->connects_to->%s", nodeID, targetID),
-			FromID:   nodeID,
-			ToID:     targetID,
-			Type:     models.EdgeConnectsTo,
-			Metadata: map[string]string{"via": "vpc_id"},
-		})
+		addEdge(resolveTarget(vpcID), "vpc_id")
 	}
 }
 

@@ -23,8 +23,19 @@ const (
 	AssetIPAddress    AssetType = "ip_address"
 	AssetNamespace    AssetType = "namespace"
 	AssetNode         AssetType = "node"
-	AssetQueue        AssetType = "queue"
-	AssetPubSub       AssetType = "pubsub"
+	AssetQueue          AssetType = "queue"
+	AssetPubSub         AssetType = "pubsub"
+	AssetIAMBinding     AssetType = "iam_binding"
+	AssetIAMPolicy      AssetType = "iam_policy"
+	AssetKMSKey         AssetType = "kms_key"
+	AssetServiceAccount AssetType = "service_account"
+	AssetIAMGroup       AssetType = "iam_group"
+	AssetCDN            AssetType = "cdn"
+	AssetDisk           AssetType = "disk"
+	AssetInstanceGroup  AssetType = "instance_group"
+	AssetHealthCheck    AssetType = "health_check"
+	AssetBackendService AssetType = "backend_service"
+	AssetMonitor        AssetType = "monitor"
 )
 
 // EdgeType represents the kind of relationship between assets.
