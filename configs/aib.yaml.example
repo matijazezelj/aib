@@ -1,0 +1,46 @@
+# AIB — Assets in a Box configuration
+storage:
+  path: "./data/aib.db"
+  memgraph:
+    enabled: false                     # Set to true to use Memgraph for graph traversal
+    uri: "bolt://localhost:7687"
+    username: ""
+    password: ""
+
+sources:
+  terraform:
+    - path: "/path/to/infra/terraform"
+      state_file: "terraform.tfstate"
+  kubernetes:
+    - path: "/path/to/k8s/manifests"
+  ansible:
+    - inventory: "/path/to/ansible/inventory"
+      playbooks: "/path/to/ansible/playbooks"
+
+certs:
+  probe_enabled: true
+  probe_interval: "6h"
+  alert_thresholds:
+    - 90
+    - 60
+    - 30
+    - 14
+    - 7
+    - 1
+
+alerts:
+  webhook:
+    enabled: false
+    url: "http://sib:8080/api/v1/events"
+    headers:
+      Authorization: "Bearer ${AIB_WEBHOOK_TOKEN}"
+  stdout:
+    enabled: true
+
+server:
+  listen: ":8080"
+  read_only: false
+
+scan:
+  schedule: "0 */4 * * *"
+  on_startup: true

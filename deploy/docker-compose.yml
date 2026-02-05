@@ -1,0 +1,37 @@
+services:
+  aib:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - aib-data:/data
+    environment:
+      - AIB_STORAGE_PATH=/data/aib.db
+      - AIB_STORAGE_MEMGRAPH_ENABLED=true
+      - AIB_STORAGE_MEMGRAPH_URI=bolt://memgraph:7687
+    depends_on:
+      memgraph:
+        condition: service_healthy
+    restart: unless-stopped
+
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    ports:
+      - "7687:7687"
+      - "7444:7444"
+    volumes:
+      - memgraph-data:/var/lib/memgraph
+    environment:
+      - MEMGRAPH_TELEMETRY_ENABLED=false
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/7687"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  aib-data:
+  memgraph-data:

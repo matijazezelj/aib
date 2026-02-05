@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIB — Assets in a Box</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>AIB</h1>
+        <span class="subtitle">Assets in a Box</span>
+        <div class="stats" id="stats"></div>
+    </header>
+
+    <div class="toolbar">
+        <input type="text" id="search" placeholder="Search nodes..." />
+        <select id="filter-type">
+            <option value="">All Types</option>
+        </select>
+        <select id="filter-source">
+            <option value="">All Sources</option>
+        </select>
+        <button id="btn-reset">Reset View</button>
+    </div>
+
+    <div class="main">
+        <div id="cy"></div>
+        <div id="detail-panel" class="hidden">
+            <button id="close-panel">&times;</button>
+            <h3 id="detail-name"></h3>
+            <div id="detail-content"></div>
+            <h4>Blast Radius</h4>
+            <div id="impact-content"></div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
