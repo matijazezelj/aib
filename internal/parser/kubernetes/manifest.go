@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -183,15 +182,18 @@ type k8sVolConfigMap struct {
 func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.ParseResult, error) {
 	result := &parser.ParseResult{}
 
+	// Split on document separator and unmarshal each document individually.
+	// Using yaml.NewDecoder on a stream can hang on malformed flow mappings,
+	// so we isolate each document instead.
 	var resources []k8sResource
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	for {
-		var res k8sResource
-		err := decoder.Decode(&res)
-		if err == io.EOF {
-			break
+	docs := splitYAMLDocuments(data)
+	for _, doc := range docs {
+		doc = bytes.TrimSpace(doc)
+		if len(doc) == 0 {
+			continue
 		}
-		if err != nil {
+		var res k8sResource
+		if err := yaml.Unmarshal(doc, &res); err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("skipping invalid YAML document in %s: %v", sourceFile, err))
 			continue
 		}
@@ -639,6 +641,15 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 	}
 
 	return result, nil
+}
+
+// splitYAMLDocuments splits multi-document YAML on "---" separators.
+func splitYAMLDocuments(data []byte) [][]byte {
+	var docs [][]byte
+	for _, doc := range bytes.Split(data, []byte("\n---")) {
+		docs = append(docs, doc)
+	}
+	return docs
 }
 
 // labelsMatch returns true if all selector labels are present in the target labels.
