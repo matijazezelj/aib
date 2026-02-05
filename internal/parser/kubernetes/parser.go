@@ -47,6 +47,11 @@ func (p *K8sParser) Supported(path string) bool {
 }
 
 func (p *K8sParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
+	path, err := parser.SafeResolvePath(path)
+	if err != nil {
+		return nil, err
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)

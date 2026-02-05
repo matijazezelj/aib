@@ -36,6 +36,11 @@ func (p *StateParser) Supported(path string) bool {
 }
 
 func (p *StateParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
+	path, err := parser.SafeResolvePath(path)
+	if err != nil {
+		return nil, err
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)

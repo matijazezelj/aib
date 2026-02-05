@@ -19,6 +19,12 @@ const TYPE_COLORS = {
 
 let cy;
 
+function esc(str) {
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(str == null ? '' : String(str)));
+    return d.innerHTML;
+}
+
 async function fetchJSON(url) {
     const resp = await fetch(url);
     return resp.json();
@@ -161,19 +167,19 @@ async function showDetail(nodeId, graphData) {
     document.getElementById('detail-name').textContent = `${nodeData.name} (${nodeData.type})`;
 
     let html = '<table class="meta-table">';
-    html += `<tr><td>ID</td><td>${nodeData.id}</td></tr>`;
-    html += `<tr><td>Type</td><td>${nodeData.type}</td></tr>`;
-    html += `<tr><td>Source</td><td>${nodeData.source}</td></tr>`;
-    html += `<tr><td>Provider</td><td>${nodeData.provider || '-'}</td></tr>`;
-    html += `<tr><td>Source File</td><td>${nodeData.source_file || '-'}</td></tr>`;
+    html += `<tr><td>ID</td><td>${esc(nodeData.id)}</td></tr>`;
+    html += `<tr><td>Type</td><td>${esc(nodeData.type)}</td></tr>`;
+    html += `<tr><td>Source</td><td>${esc(nodeData.source)}</td></tr>`;
+    html += `<tr><td>Provider</td><td>${esc(nodeData.provider || '-')}</td></tr>`;
+    html += `<tr><td>Source File</td><td>${esc(nodeData.source_file || '-')}</td></tr>`;
     if (nodeData.expires_at) {
         const days = Math.ceil((new Date(nodeData.expires_at) - new Date()) / 86400000);
         const cls = days <= 0 ? 'expired' : days <= 7 ? 'critical' : days <= 30 ? 'warning' : 'ok';
-        html += `<tr><td>Expires</td><td>${nodeData.expires_at} <span class="badge badge-${cls}">${days}d</span></td></tr>`;
+        html += `<tr><td>Expires</td><td>${esc(nodeData.expires_at)} <span class="badge badge-${cls}">${days}d</span></td></tr>`;
     }
     if (nodeData.metadata) {
         for (const [k, v] of Object.entries(nodeData.metadata)) {
-            html += `<tr><td>${k}</td><td>${v}</td></tr>`;
+            html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
         }
     }
     html += '</table>';
@@ -182,10 +188,10 @@ async function showDetail(nodeId, graphData) {
     // Fetch impact
     try {
         const impact = await fetchJSON(`${API}/impact/${encodeURIComponent(nodeId)}`);
-        let impactHtml = `<p>${impact.affected_nodes || 0} affected nodes</p>`;
+        let impactHtml = `<p>${parseInt(impact.affected_nodes) || 0} affected nodes</p>`;
         if (impact.impact_tree) {
             for (const [id, info] of Object.entries(impact.impact_tree)) {
-                impactHtml += `<div class="impact-node"><span class="edge-type">[${info.edge_type}]</span> ${id}</div>`;
+                impactHtml += `<div class="impact-node"><span class="edge-type">[${esc(info.edge_type)}]</span> ${esc(id)}</div>`;
             }
         }
         document.getElementById('impact-content').innerHTML = impactHtml;

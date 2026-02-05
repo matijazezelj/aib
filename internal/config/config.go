@@ -77,6 +77,7 @@ type StdoutConfig struct {
 type ServerConfig struct {
 	Listen   string `mapstructure:"listen"`
 	ReadOnly bool   `mapstructure:"read_only"`
+	APIToken string `mapstructure:"api_token"`
 }
 
 type ScanConfig struct {
@@ -122,6 +123,15 @@ func Load(cfgFile string) (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
+	}
+
+	// Expand ${ENV_VAR} references in sensitive string fields.
+	cfg.Storage.Memgraph.Password = os.ExpandEnv(cfg.Storage.Memgraph.Password)
+	cfg.Storage.Memgraph.Username = os.ExpandEnv(cfg.Storage.Memgraph.Username)
+	cfg.Alerts.Webhook.URL = os.ExpandEnv(cfg.Alerts.Webhook.URL)
+	cfg.Server.APIToken = os.ExpandEnv(cfg.Server.APIToken)
+	for k, v := range cfg.Alerts.Webhook.Headers {
+		cfg.Alerts.Webhook.Headers[k] = os.ExpandEnv(v)
 	}
 
 	return &cfg, nil

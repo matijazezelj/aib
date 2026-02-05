@@ -26,12 +26,14 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	nodes, err := s.store.ListNodes(ctx, graph.NodeFilter{})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing nodes", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	edges, err := s.store.ListEdges(ctx, graph.EdgeFilter{})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing edges", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -55,7 +57,8 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 
 	nodes, err := s.store.ListNodes(ctx, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing nodes", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, nodes)
@@ -71,7 +74,8 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 
 	node, err := s.store.GetNode(ctx, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("getting node", "id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if node == nil {
@@ -91,7 +95,8 @@ func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 
 	edges, err := s.store.ListEdges(ctx, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing edges", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, edges)
@@ -107,7 +112,8 @@ func (s *Server) handleImpact(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.engine.BlastRadius(ctx, nodeID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("blast radius", "nodeId", nodeID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -117,7 +123,8 @@ func (s *Server) handleCerts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	certs, err := s.tracker.ListCerts(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing certs", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, certs)
@@ -127,14 +134,15 @@ func (s *Server) handleExpiringCerts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	days := 30
 	if d := r.URL.Query().Get("days"); d != "" {
-		if parsed, err := strconv.Atoi(d); err == nil {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 3650 {
 			days = parsed
 		}
 	}
 
 	certs, err := s.tracker.ExpiringCerts(ctx, days)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing expiring certs", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, certs)
@@ -163,7 +171,8 @@ func (s *Server) handleScans(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	scans, err := s.store.ListScans(ctx, 50)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.logger.Error("listing scans", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, scans)

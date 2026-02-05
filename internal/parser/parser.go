@@ -2,9 +2,28 @@ package parser
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 
 	"github.com/matijazezelj/aib/pkg/models"
 )
+
+// SafeResolvePath resolves a user-provided path to an absolute path and ensures
+// it doesn't escape the expected root directory via symlinks or ".." components.
+func SafeResolvePath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolving path: %w", err)
+	}
+
+	// EvalSymlinks resolves symlinks and cleans ".." components against the real filesystem.
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("evaluating symlinks: %w", err)
+	}
+
+	return resolved, nil
+}
 
 // Parser discovers assets from an IaC source and returns nodes and edges.
 type Parser interface {

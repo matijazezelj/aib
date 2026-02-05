@@ -44,6 +44,11 @@ func (p *AnsibleParser) Supported(path string) bool {
 }
 
 func (p *AnsibleParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
+	path, err := parser.SafeResolvePath(path)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &parser.ParseResult{}
 	now := time.Now()
 
@@ -90,7 +95,12 @@ func (p *AnsibleParser) Parse(ctx context.Context, path string) (*parser.ParseRe
 
 	// Parse playbooks if configured
 	if p.PlaybookDir != "" {
-		pbResult, err := parsePlaybooksDir(ctx, p.PlaybookDir, hostMap, now)
+		pbDir, err := parser.SafeResolvePath(p.PlaybookDir)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("playbook path: %v", err))
+			return result, nil
+		}
+		pbResult, err := parsePlaybooksDir(ctx, pbDir, hostMap, now)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("playbook parsing: %v", err))
 		} else {

@@ -841,7 +841,7 @@ func serveCmd() *cobra.Command {
 			}
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)
-			srv := server.New(store, engine, tracker, logger, listen, readOnly || cfg.Server.ReadOnly)
+			srv := server.New(store, engine, tracker, logger, listen, readOnly || cfg.Server.ReadOnly, cfg.Server.APIToken)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 			defer stop()

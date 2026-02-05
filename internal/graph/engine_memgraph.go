@@ -309,6 +309,10 @@ func (e *MemgraphEngine) ShortestPath(ctx context.Context, fromID, toID string) 
 }
 
 func (e *MemgraphEngine) DependencyChain(ctx context.Context, nodeID string, maxDepth int) ([]models.Node, error) {
+	if maxDepth <= 0 || maxDepth > 50 {
+		maxDepth = 50
+	}
+
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
 
