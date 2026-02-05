@@ -34,7 +34,7 @@ func TestWebhookAlerter_Success(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("content-type = %q", r.Header.Get("Content-Type"))
 		}
-		json.NewDecoder(r.Body).Decode(&received)
+		_ = json.NewDecoder(r.Body).Decode(&received)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()

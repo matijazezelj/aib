@@ -163,7 +163,7 @@ func scanTerraformCmd() *cobra.Command {
 			} else {
 				p := terraform.NewStateParser()
 				if !p.Supported(path) {
-					store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
 					return fmt.Errorf("path %q is not a supported Terraform source", path)
 				}
 				fmt.Printf("Scanning Terraform state at %s...\n", path)
@@ -171,7 +171,7 @@ func scanTerraformCmd() *cobra.Command {
 			}
 
 			if err != nil {
-				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
 				return fmt.Errorf("parsing: %w", err)
 			}
 
@@ -224,7 +224,7 @@ func scanAnsibleCmd() *cobra.Command {
 
 			p := ansible.NewAnsibleParser(playbooks)
 			if !p.Supported(inventoryPath) {
-				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
 				return fmt.Errorf("path %q is not a supported Ansible inventory", inventoryPath)
 			}
 
@@ -235,7 +235,7 @@ func scanAnsibleCmd() *cobra.Command {
 
 			result, err := p.Parse(ctx, inventoryPath)
 			if err != nil {
-				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
 				return fmt.Errorf("parsing: %w", err)
 			}
 
@@ -296,7 +296,7 @@ func scanK8sCmd() *cobra.Command {
 			} else {
 				p := kubernetes.NewK8sParser(valuesFile)
 				if !p.Supported(path) {
-					store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
 					return fmt.Errorf("path %q is not a supported Kubernetes source", path)
 				}
 				fmt.Printf("Scanning Kubernetes manifests at %s...\n", path)
@@ -304,7 +304,7 @@ func scanK8sCmd() *cobra.Command {
 			}
 
 			if err != nil {
-				store.UpdateScan(ctx, scanID, "failed", 0, 0)
+				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
 				return fmt.Errorf("parsing: %w", err)
 			}
 
@@ -815,7 +815,7 @@ func certsCheckCmd() *cobra.Command {
 					if ci.Node.ExpiresAt != nil {
 						event.Asset.ExpiresAt = ci.Node.ExpiresAt.Format(time.RFC3339)
 					}
-					multi.Send(ctx, event)
+					_ = multi.Send(ctx, event)
 				}
 			}
 
@@ -850,7 +850,7 @@ func serveCmd() *cobra.Command {
 				<-ctx.Done()
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				srv.Shutdown(shutdownCtx)
+				_ = srv.Shutdown(shutdownCtx)
 				engine.Close()
 				store.Close()
 			}()

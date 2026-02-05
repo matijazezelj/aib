@@ -122,12 +122,12 @@ func TestUpsertNodeUpdate(t *testing.T) {
 		Source: "terraform", Metadata: map[string]string{},
 		LastSeen: firstSeen, FirstSeen: firstSeen,
 	}
-	store.UpsertNode(ctx, node)
+	_ = store.UpsertNode(ctx, node)
 
 	// Update with new name and last_seen
 	node.Name = "web1-updated"
 	node.LastSeen = time.Now().Truncate(time.Second)
-	store.UpsertNode(ctx, node)
+	_ = store.UpsertNode(ctx, node)
 
 	got, _ := store.GetNode(ctx, "test:vm:web1")
 	if got.Name != "web1-updated" {
@@ -204,11 +204,11 @@ func TestUpsertEdgeConflict(t *testing.T) {
 		ID: "e1", FromID: "a", ToID: "b", Type: models.EdgeDependsOn,
 		Metadata: map[string]string{"v": "1"},
 	}
-	store.UpsertEdge(ctx, edge)
+	_ = store.UpsertEdge(ctx, edge)
 
 	// Upsert with updated metadata (same from_id, to_id, type)
 	edge.Metadata = map[string]string{"v": "2"}
-	store.UpsertEdge(ctx, edge)
+	_ = store.UpsertEdge(ctx, edge)
 
 	edges, _ := store.ListEdges(ctx, EdgeFilter{})
 	if len(edges) != 1 {
@@ -390,7 +390,7 @@ func TestDeleteNode(t *testing.T) {
 		[]models.Edge{makeEdge("a", "b", models.EdgeDependsOn)},
 	)
 
-	store.DeleteNode(ctx, "a")
+	_ = store.DeleteNode(ctx, "a")
 
 	got, _ := store.GetNode(ctx, "a")
 	if got != nil {
@@ -530,7 +530,7 @@ func TestUpdateScan(t *testing.T) {
 		StartedAt: time.Now(), Status: "running",
 	})
 
-	store.UpdateScan(ctx, id, "completed", 10, 5)
+	_ = store.UpdateScan(ctx, id, "completed", 10, 5)
 
 	scans, _ := store.ListScans(ctx, 10)
 	if scans[0].Status != "completed" {

@@ -116,7 +116,7 @@ func TestGetNodes_FilterByType(t *testing.T) {
 	defer resp.Body.Close()
 
 	var nodes []models.Node
-	json.NewDecoder(resp.Body).Decode(&nodes)
+	_ = json.NewDecoder(resp.Body).Decode(&nodes)
 	if len(nodes) != 1 {
 		t.Errorf("vm nodes = %d, want 1", len(nodes))
 	}
@@ -137,7 +137,7 @@ func TestGetNodeByID(t *testing.T) {
 	}
 
 	var node models.Node
-	json.NewDecoder(resp.Body).Decode(&node)
+	_ = json.NewDecoder(resp.Body).Decode(&node)
 	if node.ID != "tf:vm:web1" {
 		t.Errorf("node id = %q, want tf:vm:web1", node.ID)
 	}

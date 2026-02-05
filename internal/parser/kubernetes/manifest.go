@@ -645,11 +645,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 
 // splitYAMLDocuments splits multi-document YAML on "---" separators.
 func splitYAMLDocuments(data []byte) [][]byte {
-	var docs [][]byte
-	for _, doc := range bytes.Split(data, []byte("\n---")) {
-		docs = append(docs, doc)
-	}
-	return docs
+	return bytes.Split(data, []byte("\n---"))
 }
 
 // labelsMatch returns true if all selector labels are present in the target labels.
