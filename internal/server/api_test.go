@@ -167,7 +167,7 @@ func TestGetEdges(t *testing.T) {
 	defer resp.Body.Close()
 
 	var edges []models.Edge
-	json.NewDecoder(resp.Body).Decode(&edges)
+	_ = json.NewDecoder(resp.Body).Decode(&edges)
 	if len(edges) != 1 {
 		t.Errorf("edges = %d, want 1", len(edges))
 	}
@@ -184,7 +184,7 @@ func TestGetGraph(t *testing.T) {
 	defer resp.Body.Close()
 
 	var result map[string]json.RawMessage
-	json.NewDecoder(resp.Body).Decode(&result)
+	_ = json.NewDecoder(resp.Body).Decode(&result)
 
 	if _, ok := result["nodes"]; !ok {
 		t.Error("missing nodes key in graph response")
@@ -209,7 +209,7 @@ func TestGetImpact(t *testing.T) {
 	}
 
 	var result map[string]any
-	json.NewDecoder(resp.Body).Decode(&result)
+	_ = json.NewDecoder(resp.Body).Decode(&result)
 	if result["affected_nodes"].(float64) != 1 {
 		t.Errorf("affected_nodes = %v, want 1", result["affected_nodes"])
 	}
@@ -226,7 +226,7 @@ func TestGetStats(t *testing.T) {
 	defer resp.Body.Close()
 
 	var stats map[string]any
-	json.NewDecoder(resp.Body).Decode(&stats)
+	_ = json.NewDecoder(resp.Body).Decode(&stats)
 	if stats["nodes_total"].(float64) != 2 {
 		t.Errorf("nodes_total = %v, want 2", stats["nodes_total"])
 	}

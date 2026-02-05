@@ -186,7 +186,7 @@ func scanTerraformCmd() *cobra.Command {
 				}
 			}
 
-			store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+			_ = store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
 
 			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
 			for _, w := range result.Warnings {
@@ -250,7 +250,7 @@ func scanAnsibleCmd() *cobra.Command {
 				}
 			}
 
-			store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+			_ = store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
 
 			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
 			for _, w := range result.Warnings {
@@ -319,7 +319,7 @@ func scanK8sCmd() *cobra.Command {
 				}
 			}
 
-			store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+			_ = store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
 
 			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
 			for _, w := range result.Warnings {
