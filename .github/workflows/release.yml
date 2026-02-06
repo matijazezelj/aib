@@ -30,7 +30,9 @@ jobs:
           GOFLAGS="-trimpath"
 
           GOOS=linux GOARCH=amd64 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o dist/aib-linux-amd64 ./cmd/aib
+          GOOS=linux GOARCH=arm64 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o dist/aib-linux-arm64 ./cmd/aib
           GOOS=darwin GOARCH=arm64 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o dist/aib-darwin-arm64 ./cmd/aib
+          GOOS=darwin GOARCH=amd64 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o dist/aib-darwin-amd64 ./cmd/aib
 
           cd dist
           sha256sum aib-* > checksums.txt
@@ -42,5 +44,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           files: |
             dist/aib-linux-amd64
+            dist/aib-linux-arm64
             dist/aib-darwin-arm64
+            dist/aib-darwin-amd64
             dist/checksums.txt

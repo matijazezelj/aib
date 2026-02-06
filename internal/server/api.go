@@ -309,3 +309,39 @@ func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request) {
 	running := s.scanner != nil && s.scanner.IsRunning()
 	writeJSON(w, http.StatusOK, map[string]any{"running": running})
 }
+
+func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
+	out, err := graph.ExportJSON(r.Context(), s.store)
+	if err != nil {
+		s.logger.Error("export json", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="aib-graph.json"`)
+	_, _ = w.Write([]byte(out))
+}
+
+func (s *Server) handleExportDOT(w http.ResponseWriter, r *http.Request) {
+	out, err := graph.ExportDOT(r.Context(), s.store)
+	if err != nil {
+		s.logger.Error("export dot", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.Header().Set("Content-Type", "text/vnd.graphviz")
+	w.Header().Set("Content-Disposition", `attachment; filename="aib-graph.dot"`)
+	_, _ = w.Write([]byte(out))
+}
+
+func (s *Server) handleExportMermaid(w http.ResponseWriter, r *http.Request) {
+	out, err := graph.ExportMermaid(r.Context(), s.store)
+	if err != nil {
+		s.logger.Error("export mermaid", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", `attachment; filename="aib-graph.mmd"`)
+	_, _ = w.Write([]byte(out))
+}

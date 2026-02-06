@@ -16,6 +16,10 @@ func RegisterRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /api/v1/scans", s.handleScans)
 	mux.HandleFunc("GET /api/v1/scan/status", s.handleScanStatus)
 
+	mux.HandleFunc("GET /api/v1/export/json", s.handleExportJSON)
+	mux.HandleFunc("GET /api/v1/export/dot", s.handleExportDOT)
+	mux.HandleFunc("GET /api/v1/export/mermaid", s.handleExportMermaid)
+
 	if !s.readOnly {
 		mux.HandleFunc("POST /api/v1/scan", s.handleTriggerScan)
 	}

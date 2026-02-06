@@ -30,7 +30,7 @@ func FetchLive(ctx context.Context, kubeconfig, kubeCtx string, namespaces []str
 	result := &parser.ParseResult{}
 	now := time.Now()
 
-	resourceTypes := "deployments,statefulsets,daemonsets,services,ingresses,configmaps,secrets"
+	resourceTypes := "deployments,statefulsets,daemonsets,services,ingresses,configmaps,secrets,serviceaccounts,roles,rolebindings,networkpolicies,jobs,cronjobs,horizontalpodautoscalers"
 
 	for _, ns := range namespaces {
 		data, err := kubectlGet(ctx, kubeconfig, kubeCtx, ns, resourceTypes)

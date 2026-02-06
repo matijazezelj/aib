@@ -19,6 +19,10 @@ type k8sResource struct {
 	Metadata   k8sMeta     `yaml:"metadata"`
 	Spec       k8sSpec     `yaml:"spec"`
 	Data       interface{} `yaml:"data"`
+
+	// RBAC: RoleBinding/ClusterRoleBinding top-level fields
+	RoleRef  *k8sRoleRef  `yaml:"roleRef"`
+	Subjects []k8sSubject `yaml:"subjects"`
 }
 
 type k8sMeta struct {
@@ -46,6 +50,19 @@ type k8sSpec struct {
 	// cert-manager Certificate
 	SecretName string   `yaml:"secretName"`
 	DNSNames   []string `yaml:"dnsNames"`
+
+	// Job / CronJob
+	Schedule    string      `yaml:"schedule"`
+	JobTemplate k8sJobTmpl  `yaml:"jobTemplate"`
+
+	// HPA
+	ScaleTargetRef *k8sScaleTargetRef `yaml:"scaleTargetRef"`
+	MinReplicas    *int               `yaml:"minReplicas"`
+	MaxReplicas    int                `yaml:"maxReplicas"`
+
+	// NetworkPolicy
+	PodSelector *k8sPodSelector  `yaml:"podSelector"`
+	PolicyTypes []string         `yaml:"policyTypes"`
 }
 
 // k8sSelector handles both Service selector (flat map) and Deployment selector ({matchLabels}).
@@ -176,6 +193,38 @@ type k8sVolSecret struct {
 
 type k8sVolConfigMap struct {
 	Name string `yaml:"name"`
+}
+
+// RBAC types
+type k8sRoleRef struct {
+	Kind string `yaml:"kind"`
+	Name string `yaml:"name"`
+}
+
+type k8sSubject struct {
+	Kind      string `yaml:"kind"`
+	Name      string `yaml:"name"`
+	Namespace string `yaml:"namespace"`
+}
+
+// NetworkPolicy pod selector
+type k8sPodSelector struct {
+	MatchLabels map[string]string `yaml:"matchLabels"`
+}
+
+// HPA scale target
+type k8sScaleTargetRef struct {
+	Kind string `yaml:"kind"`
+	Name string `yaml:"name"`
+}
+
+// Job template (for CronJob)
+type k8sJobTmpl struct {
+	Spec k8sJobTmplSpec `yaml:"spec"`
+}
+
+type k8sJobTmplSpec struct {
+	Template k8sPodSpec `yaml:"template"`
 }
 
 // k8sList wraps a Kubernetes List response (from kubectl get -o yaml).
@@ -429,6 +478,104 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			nodeMap[nodeID] = node
 			result.Nodes = append(result.Nodes, node)
 
+		case "ServiceAccount":
+			nodeID := k8sNodeID("serviceaccount", ns, res.Metadata.Name)
+			meta := map[string]string{"namespace": ns}
+			for k, v := range res.Metadata.Labels {
+				meta["label:"+k] = v
+			}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetServiceAccount,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
+		case "Role", "ClusterRole":
+			nodeID := k8sNodeID("role", ns, res.Metadata.Name)
+			if res.Kind == "ClusterRole" {
+				nodeID = fmt.Sprintf("k8s:clusterrole:%s", res.Metadata.Name)
+			}
+			meta := map[string]string{"kind": res.Kind, "namespace": ns}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetIAMPolicy,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
+		case "RoleBinding", "ClusterRoleBinding":
+			nodeID := k8sNodeID("rolebinding", ns, res.Metadata.Name)
+			if res.Kind == "ClusterRoleBinding" {
+				nodeID = fmt.Sprintf("k8s:clusterrolebinding:%s", res.Metadata.Name)
+			}
+			meta := map[string]string{"kind": res.Kind, "namespace": ns}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetIAMBinding,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
+		case "NetworkPolicy":
+			nodeID := k8sNodeID("networkpolicy", ns, res.Metadata.Name)
+			meta := map[string]string{"namespace": ns}
+			if len(res.Spec.PolicyTypes) > 0 {
+				meta["policy_types"] = strings.Join(res.Spec.PolicyTypes, ",")
+			}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetFirewallRule,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
+		case "Job":
+			nodeID := k8sNodeID("job", ns, res.Metadata.Name)
+			meta := map[string]string{"kind": "Job", "namespace": ns}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetPod,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
+		case "CronJob":
+			nodeID := k8sNodeID("cronjob", ns, res.Metadata.Name)
+			meta := map[string]string{"kind": "CronJob", "namespace": ns}
+			if res.Spec.Schedule != "" {
+				meta["schedule"] = res.Spec.Schedule
+			}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetPod,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
+		case "HorizontalPodAutoscaler":
+			nodeID := k8sNodeID("hpa", ns, res.Metadata.Name)
+			meta := map[string]string{"namespace": ns}
+			if res.Spec.MinReplicas != nil {
+				meta["min_replicas"] = fmt.Sprintf("%d", *res.Spec.MinReplicas)
+			}
+			if res.Spec.MaxReplicas > 0 {
+				meta["max_replicas"] = fmt.Sprintf("%d", res.Spec.MaxReplicas)
+			}
+			node := models.Node{
+				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetMonitor,
+				Source: "kubernetes", SourceFile: sourceFile, Provider: "kubernetes",
+				Metadata: meta, LastSeen: now, FirstSeen: now,
+			}
+			nodeMap[nodeID] = node
+			result.Nodes = append(result.Nodes, node)
+
 		default:
 			result.Warnings = append(result.Warnings, fmt.Sprintf("skipping unsupported kind: %s/%s", res.Kind, res.Metadata.Name))
 		}
@@ -655,6 +802,73 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 					}
 					nodeMap[secretID] = node
 					result.Nodes = append(result.Nodes, node)
+				}
+			}
+
+		case "RoleBinding", "ClusterRoleBinding":
+			bindingID := k8sNodeID("rolebinding", ns, res.Metadata.Name)
+			if res.Kind == "ClusterRoleBinding" {
+				bindingID = fmt.Sprintf("k8s:clusterrolebinding:%s", res.Metadata.Name)
+			}
+			// Binding → Role/ClusterRole
+			if res.RoleRef != nil {
+				var roleID string
+				if res.RoleRef.Kind == "ClusterRole" {
+					roleID = fmt.Sprintf("k8s:clusterrole:%s", res.RoleRef.Name)
+				} else {
+					roleID = k8sNodeID("role", ns, res.RoleRef.Name)
+				}
+				eid := fmt.Sprintf("%s->depends_on->%s", bindingID, roleID)
+				result.Edges = append(result.Edges, models.Edge{
+					ID: eid, FromID: bindingID, ToID: roleID,
+					Type: models.EdgeDependsOn, Metadata: map[string]string{"via": "roleRef"},
+				})
+			}
+			// Binding → Subjects (ServiceAccounts)
+			for _, subj := range res.Subjects {
+				if subj.Kind == "ServiceAccount" {
+					subjNs := subj.Namespace
+					if subjNs == "" {
+						subjNs = ns
+					}
+					saID := k8sNodeID("serviceaccount", subjNs, subj.Name)
+					eid := fmt.Sprintf("%s->managed_by->%s", saID, bindingID)
+					result.Edges = append(result.Edges, models.Edge{
+						ID: eid, FromID: saID, ToID: bindingID,
+						Type: models.EdgeManagedBy, Metadata: map[string]string{"via": "subject"},
+					})
+				}
+			}
+
+		case "NetworkPolicy":
+			npID := k8sNodeID("networkpolicy", ns, res.Metadata.Name)
+			// NetworkPolicy → Pods via podSelector
+			if res.Spec.PodSelector != nil && len(res.Spec.PodSelector.MatchLabels) > 0 {
+				for wlID, labels := range workloadLabels {
+					if labelsMatch(res.Spec.PodSelector.MatchLabels, labels) {
+						eid := fmt.Sprintf("%s->managed_by->%s", wlID, npID)
+						result.Edges = append(result.Edges, models.Edge{
+							ID: eid, FromID: wlID, ToID: npID,
+							Type: models.EdgeManagedBy, Metadata: map[string]string{"via": "podSelector"},
+						})
+					}
+				}
+			}
+
+		case "HorizontalPodAutoscaler":
+			hpaID := k8sNodeID("hpa", ns, res.Metadata.Name)
+			if res.Spec.ScaleTargetRef != nil {
+				targetKind := strings.ToLower(res.Spec.ScaleTargetRef.Kind)
+				var targetID string
+				if targetKind == "deployment" || targetKind == "statefulset" || targetKind == "replicaset" {
+					targetID = k8sNodeID("pod", ns, res.Spec.ScaleTargetRef.Name)
+				}
+				if targetID != "" {
+					eid := fmt.Sprintf("%s->managed_by->%s", targetID, hpaID)
+					result.Edges = append(result.Edges, models.Edge{
+						ID: eid, FromID: targetID, ToID: hpaID,
+						Type: models.EdgeManagedBy, Metadata: map[string]string{"via": "scaleTargetRef"},
+					})
 				}
 			}
 		}

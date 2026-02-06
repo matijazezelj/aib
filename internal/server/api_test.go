@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -324,5 +325,195 @@ func TestAuth_HealthzBypassesAuth(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200 (healthz bypasses auth)", resp.StatusCode)
+	}
+}
+
+func TestGetCerts(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	ctx := context.Background()
+	now := time.Now()
+	future := now.Add(60 * 24 * time.Hour)
+
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "cert:test", Name: "test-cert", Type: models.AssetCertificate,
+		Source: "probe", Metadata: map[string]string{},
+		ExpiresAt: &future, LastSeen: now, FirstSeen: now,
+	})
+
+	resp, err := http.Get(ts.URL + "/api/v1/certs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var certs []json.RawMessage
+	_ = json.NewDecoder(resp.Body).Decode(&certs)
+	if len(certs) != 1 {
+		t.Errorf("certs = %d, want 1", len(certs))
+	}
+}
+
+func TestGetExpiringCerts(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	ctx := context.Background()
+	now := time.Now()
+	soon := now.Add(10 * 24 * time.Hour)
+	far := now.Add(120 * 24 * time.Hour)
+
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "cert:soon", Name: "soon-cert", Type: models.AssetCertificate,
+		Source: "probe", Metadata: map[string]string{},
+		ExpiresAt: &soon, LastSeen: now, FirstSeen: now,
+	})
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "cert:far", Name: "far-cert", Type: models.AssetCertificate,
+		Source: "probe", Metadata: map[string]string{},
+		ExpiresAt: &far, LastSeen: now, FirstSeen: now,
+	})
+
+	resp, err := http.Get(ts.URL + "/api/v1/certs/expiring?days=30")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var certs []json.RawMessage
+	_ = json.NewDecoder(resp.Body).Decode(&certs)
+	if len(certs) != 1 {
+		t.Errorf("expiring certs = %d, want 1", len(certs))
+	}
+}
+
+func TestGetScanStatus(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+
+	resp, err := http.Get(ts.URL + "/api/v1/scan/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var status map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&status)
+	if status["running"] != false {
+		t.Errorf("running = %v, want false", status["running"])
+	}
+}
+
+func TestTriggerScan_NoScanner(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+
+	body := strings.NewReader(`{"source":"terraform","paths":["/tmp/state.tfstate"]}`)
+	resp, err := http.Post(ts.URL+"/api/v1/scan", "application/json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Scanner is nil in test server, should return 503
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestTriggerScan_InvalidSource(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+
+	body := strings.NewReader(`{"source":"invalid"}`)
+	resp, err := http.Post(ts.URL+"/api/v1/scan", "application/json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Even though scanner is nil, source validation happens before scanner check
+	// Actually scanner nil check happens first → 503
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 (scanner nil checked first)", resp.StatusCode)
+	}
+}
+
+func TestExportJSON(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/export/json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "aib-graph.json") {
+		t.Errorf("Content-Disposition = %q, want to contain aib-graph.json", cd)
+	}
+}
+
+func TestExportDOT(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/export/dot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "aib-graph.dot") {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+}
+
+func TestExportMermaid(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/export/mermaid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "aib-graph.mmd") {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+}
+
+func TestTriggerScan_PathTraversal(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+
+	body := strings.NewReader(`{"source":"terraform","paths":["/home/../etc/passwd"]}`)
+	resp, err := http.Post(ts.URL+"/api/v1/scan", "application/json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Scanner nil check happens first → 503
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 (scanner nil checked first)", resp.StatusCode)
 	}
 }

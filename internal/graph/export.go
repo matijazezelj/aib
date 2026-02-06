@@ -123,6 +123,12 @@ func nodeColor(t models.AssetType) string {
 		return "#82E0AA"
 	case models.AssetFirewallRule:
 		return "#F0B27A"
+	case models.AssetFunction:
+		return "#F5B041"
+	case models.AssetAPIGateway:
+		return "#F9E79F"
+	case models.AssetNoSQLDB:
+		return "#D7BDE2"
 	default:
 		return "#D5D8DC"
 	}

@@ -37,6 +37,9 @@ const (
 	AssetHealthCheck    AssetType = "health_check"
 	AssetBackendService AssetType = "backend_service"
 	AssetMonitor        AssetType = "monitor"
+	AssetFunction       AssetType = "function"
+	AssetAPIGateway     AssetType = "api_gateway"
+	AssetNoSQLDB        AssetType = "nosql_database"
 )
 
 // EdgeType represents the kind of relationship between assets.

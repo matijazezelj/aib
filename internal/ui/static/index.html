@@ -15,17 +15,33 @@
     </header>
 
     <div class="toolbar">
-        <input type="text" id="search" placeholder="Search nodes..." />
+        <input type="text" id="search" placeholder="Search nodes... ( / )" />
         <select id="filter-type">
             <option value="">All Types</option>
         </select>
         <select id="filter-source">
             <option value="">All Sources</option>
         </select>
+        <select id="group-by">
+            <option value="">No Grouping</option>
+            <option value="source">Group by Source</option>
+            <option value="type">Group by Type</option>
+            <option value="namespace">Group by Namespace</option>
+        </select>
+        <div class="dropdown" id="export-dropdown">
+            <button id="btn-export">Export</button>
+            <div class="dropdown-menu" id="export-menu">
+                <a href="#" data-format="json">JSON</a>
+                <a href="#" data-format="dot">DOT (Graphviz)</a>
+                <a href="#" data-format="mermaid">Mermaid</a>
+                <a href="#" data-format="png">PNG Image</a>
+            </div>
+        </div>
         <button id="btn-reset">Reset View</button>
         <button id="btn-scan">Scan Now</button>
         <span id="scan-status"></span>
         <button id="btn-legend">Legend</button>
+        <button id="btn-shortcuts" title="Keyboard Shortcuts (?)">?</button>
     </div>
 
     <div id="legend" class="hidden">
@@ -41,6 +57,16 @@
         <span class="legend-item"><svg width="14" height="14"><rect x="1" y="2" width="12" height="10" rx="5" fill="#7c8894" stroke="#30363d"/></svg> Namespace</span>
     </div>
 
+    <div id="shortcuts-panel" class="hidden">
+        <div class="shortcuts-list">
+            <span><kbd>/</kbd> Focus search</span>
+            <span><kbd>Esc</kbd> Deselect / close panel</span>
+            <span><kbd>r</kbd> Reset view</span>
+            <span><kbd>l</kbd> Toggle legend</span>
+            <span><kbd>?</kbd> Toggle shortcuts</span>
+        </div>
+    </div>
+
     <div class="main">
         <div id="cy"></div>
         <div id="detail-panel" class="hidden">
@@ -50,6 +76,12 @@
             <h4>Blast Radius</h4>
             <div id="impact-content"></div>
         </div>
+    </div>
+
+    <div id="context-menu" class="hidden">
+        <a href="#" data-action="impact">Show Impact</a>
+        <a href="#" data-action="neighbors">Show Neighbors</a>
+        <a href="#" data-action="copy-id">Copy ID</a>
     </div>
 
     <script src="/app.js"></script>

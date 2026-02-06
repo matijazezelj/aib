@@ -198,9 +198,9 @@ func TestParseManifests_InvalidYAML(t *testing.T) {
 func TestParseManifests_UnsupportedKind(t *testing.T) {
 	data := []byte(`---
 apiVersion: v1
-kind: ServiceAccount
+kind: PersistentVolumeClaim
 metadata:
-  name: my-sa
+  name: my-pvc
 `)
 	result, err := parseManifests(data, "test.yaml", time.Now())
 	if err != nil {
@@ -211,5 +211,116 @@ metadata:
 	}
 	if len(result.Nodes) != 0 {
 		t.Errorf("nodes = %d, want 0 for unsupported kind", len(result.Nodes))
+	}
+}
+
+func TestParseManifests_RBAC(t *testing.T) {
+	data, err := os.ReadFile("testdata/rbac.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := parseManifests(data, "testdata/rbac.yaml", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodeIDs := make(map[string]models.Node)
+	for _, n := range result.Nodes {
+		nodeIDs[n.ID] = n
+	}
+
+	wantNodes := []string{
+		"k8s:serviceaccount:production/app-sa",
+		"k8s:role:production/pod-reader",
+		"k8s:clusterrole:cluster-admin-role",
+		"k8s:rolebinding:production/read-pods",
+		"k8s:clusterrolebinding:admin-binding",
+		"k8s:networkpolicy:production/deny-all",
+		"k8s:job:production/data-migration",
+		"k8s:cronjob:production/daily-cleanup",
+		"k8s:hpa:production/api-hpa",
+	}
+
+	for _, id := range wantNodes {
+		if _, ok := nodeIDs[id]; !ok {
+			t.Errorf("missing node %s", id)
+		}
+	}
+
+	// Verify types
+	if n, ok := nodeIDs["k8s:serviceaccount:production/app-sa"]; ok {
+		if n.Type != models.AssetServiceAccount {
+			t.Errorf("ServiceAccount type = %q, want service_account", n.Type)
+		}
+	}
+	if n, ok := nodeIDs["k8s:role:production/pod-reader"]; ok {
+		if n.Type != models.AssetIAMPolicy {
+			t.Errorf("Role type = %q, want iam_policy", n.Type)
+		}
+	}
+	if n, ok := nodeIDs["k8s:networkpolicy:production/deny-all"]; ok {
+		if n.Type != models.AssetFirewallRule {
+			t.Errorf("NetworkPolicy type = %q, want firewall_rule", n.Type)
+		}
+	}
+	if n, ok := nodeIDs["k8s:hpa:production/api-hpa"]; ok {
+		if n.Type != models.AssetMonitor {
+			t.Errorf("HPA type = %q, want monitor", n.Type)
+		}
+	}
+	if n, ok := nodeIDs["k8s:cronjob:production/daily-cleanup"]; ok {
+		if n.Metadata["schedule"] != "0 2 * * *" {
+			t.Errorf("CronJob schedule = %q, want '0 2 * * *'", n.Metadata["schedule"])
+		}
+	}
+}
+
+func TestParseManifests_RBAC_Edges(t *testing.T) {
+	// Combine the main manifests (which have api-backend deployment) with RBAC resources
+	mainData, err := os.ReadFile("testdata/manifests.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rbacData, err := os.ReadFile("testdata/rbac.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := append(mainData, []byte("\n---\n")...)
+	data = append(data, rbacData...)
+
+	result, err := parseManifests(data, "test.yaml", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	edgeMap := make(map[string]models.EdgeType)
+	for _, e := range result.Edges {
+		edgeMap[e.FromID+"->"+e.ToID] = e.Type
+	}
+
+	// RoleBinding → Role (depends_on via roleRef)
+	if edgeMap["k8s:rolebinding:production/read-pods->k8s:role:production/pod-reader"] != models.EdgeDependsOn {
+		t.Error("missing depends_on edge: read-pods -> pod-reader")
+	}
+
+	// ServiceAccount → RoleBinding (managed_by via subject)
+	if edgeMap["k8s:serviceaccount:production/app-sa->k8s:rolebinding:production/read-pods"] != models.EdgeManagedBy {
+		t.Error("missing managed_by edge: app-sa -> read-pods")
+	}
+
+	// ClusterRoleBinding → ClusterRole
+	if edgeMap["k8s:clusterrolebinding:admin-binding->k8s:clusterrole:cluster-admin-role"] != models.EdgeDependsOn {
+		t.Error("missing depends_on edge: admin-binding -> cluster-admin-role")
+	}
+
+	// NetworkPolicy → Pod (managed_by via podSelector, matching api-backend from manifests.yaml)
+	if edgeMap["k8s:pod:production/api-backend->k8s:networkpolicy:production/deny-all"] != models.EdgeManagedBy {
+		t.Error("missing managed_by edge: api-backend -> deny-all (via podSelector)")
+	}
+
+	// HPA → Deployment (managed_by via scaleTargetRef)
+	if edgeMap["k8s:pod:production/api-backend->k8s:hpa:production/api-hpa"] != models.EdgeManagedBy {
+		t.Error("missing managed_by edge: api-backend -> api-hpa (via scaleTargetRef)")
 	}
 }

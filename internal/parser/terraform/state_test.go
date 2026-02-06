@@ -125,6 +125,54 @@ func TestMapResourceType(t *testing.T) {
 		{"cloudflare_record", models.AssetDNSRecord},
 		{"tls_self_signed_cert", models.AssetCertificate},
 		{"kubernetes_deployment", models.AssetPod},
+		// IAM / Identity
+		{"google_project_iam_binding", models.AssetIAMBinding},
+		{"google_project_iam_policy", models.AssetIAMPolicy},
+		{"aws_iam_role", models.AssetServiceAccount},
+		{"aws_iam_policy", models.AssetIAMPolicy},
+		{"aws_iam_role_policy_attachment", models.AssetIAMBinding},
+		{"aws_iam_group", models.AssetIAMGroup},
+		{"azurerm_role_assignment", models.AssetIAMBinding},
+		{"google_service_account", models.AssetServiceAccount},
+		// KMS
+		{"google_kms_key_ring", models.AssetKMSKey},
+		{"google_kms_crypto_key", models.AssetKMSKey},
+		{"aws_kms_key", models.AssetKMSKey},
+		// CDN
+		{"aws_cloudfront_distribution", models.AssetCDN},
+		{"google_compute_backend_bucket", models.AssetCDN},
+		// Disk
+		{"google_compute_disk", models.AssetDisk},
+		{"aws_ebs_volume", models.AssetDisk},
+		// Instance Groups
+		{"google_compute_instance_group_manager", models.AssetInstanceGroup},
+		{"aws_autoscaling_group", models.AssetInstanceGroup},
+		// Health / Backend
+		{"google_compute_health_check", models.AssetHealthCheck},
+		{"google_compute_backend_service", models.AssetBackendService},
+		// S3 sub-resources
+		{"aws_s3_bucket_acl", models.AssetIAMPolicy},
+		{"aws_s3_bucket_versioning", models.AssetBucket},
+		{"aws_s3_bucket_policy", models.AssetIAMPolicy},
+		// Monitoring
+		{"pingdom_check", models.AssetMonitor},
+		// Serverless
+		{"aws_lambda_function", models.AssetFunction},
+		{"aws_api_gateway_rest_api", models.AssetAPIGateway},
+		{"aws_apigatewayv2_api", models.AssetAPIGateway},
+		{"aws_dynamodb_table", models.AssetNoSQLDB},
+		{"aws_secretsmanager_secret", models.AssetSecret},
+		{"google_cloudfunctions_function", models.AssetFunction},
+		{"google_cloudfunctions2_function", models.AssetFunction},
+		{"google_cloud_run_service", models.AssetService},
+		{"google_cloud_run_v2_service", models.AssetService},
+		{"google_bigquery_dataset", models.AssetDatabase},
+		{"google_bigquery_table", models.AssetDatabase},
+		{"azurerm_function_app", models.AssetFunction},
+		{"azurerm_linux_function_app", models.AssetFunction},
+		{"azurerm_windows_function_app", models.AssetFunction},
+		{"azurerm_cosmosdb_account", models.AssetNoSQLDB},
+		{"azurerm_api_management", models.AssetAPIGateway},
 		{"unknown_resource_type", ""},
 	}
 

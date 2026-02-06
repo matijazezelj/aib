@@ -283,6 +283,25 @@ func mapResourceType(tfType string) models.AssetType {
 		"kubernetes_ingress":              models.AssetIngress,
 		"kubernetes_secret":               models.AssetSecret,
 		"kubernetes_deployment":           models.AssetPod,
+		// AWS Serverless
+		"aws_lambda_function":             models.AssetFunction,
+		"aws_api_gateway_rest_api":        models.AssetAPIGateway,
+		"aws_apigatewayv2_api":            models.AssetAPIGateway,
+		"aws_dynamodb_table":              models.AssetNoSQLDB,
+		"aws_secretsmanager_secret":       models.AssetSecret,
+		// GCP Serverless
+		"google_cloudfunctions_function":   models.AssetFunction,
+		"google_cloudfunctions2_function":  models.AssetFunction,
+		"google_cloud_run_service":         models.AssetService,
+		"google_cloud_run_v2_service":      models.AssetService,
+		"google_bigquery_dataset":          models.AssetDatabase,
+		"google_bigquery_table":            models.AssetDatabase,
+		// Azure Serverless
+		"azurerm_function_app":            models.AssetFunction,
+		"azurerm_linux_function_app":      models.AssetFunction,
+		"azurerm_windows_function_app":    models.AssetFunction,
+		"azurerm_cosmosdb_account":        models.AssetNoSQLDB,
+		"azurerm_api_management":          models.AssetAPIGateway,
 	}
 
 	if t, ok := mapping[tfType]; ok {

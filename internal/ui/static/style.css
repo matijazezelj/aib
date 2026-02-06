@@ -11,6 +11,7 @@ header .stats { margin-left: auto; font-size: 13px; color: #8b949e; }
 
 .toolbar {
     display: flex; gap: 8px; padding: 10px 20px; background: #161b22; border-bottom: 1px solid #30363d;
+    flex-wrap: wrap; align-items: center;
 }
 .toolbar input, .toolbar select {
     padding: 6px 10px; background: #0d1117; border: 1px solid #30363d;
@@ -26,6 +27,8 @@ header .stats { margin-left: auto; font-size: 13px; color: #8b949e; }
 #btn-scan { background: #238636; border-color: #2ea043; color: #fff; }
 #btn-scan:hover { background: #2ea043; }
 #btn-scan:disabled { background: #21262d; border-color: #30363d; color: #8b949e; cursor: not-allowed; }
+
+#btn-shortcuts { width: 32px; padding: 6px 0; text-align: center; font-weight: bold; }
 
 #scan-status { font-size: 12px; color: #8b949e; align-self: center; }
 
@@ -48,6 +51,46 @@ header .stats { margin-left: auto; font-size: 13px; color: #8b949e; }
 .legend-item svg { vertical-align: middle; }
 
 #btn-legend { margin-left: auto; }
+
+/* Shortcuts panel */
+#shortcuts-panel {
+    padding: 8px 20px; background: #161b22; border-bottom: 1px solid #30363d;
+}
+#shortcuts-panel.hidden { display: none; }
+.shortcuts-list {
+    display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: #8b949e;
+}
+.shortcuts-list kbd {
+    display: inline-block; padding: 2px 6px; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 3px; font-family: monospace;
+    font-size: 11px; color: #c9d1d9; margin-right: 4px;
+}
+
+/* Export dropdown */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu {
+    display: none; position: absolute; top: 100%; left: 0; z-index: 100;
+    background: #161b22; border: 1px solid #30363d; border-radius: 4px;
+    min-width: 160px; margin-top: 4px;
+}
+.dropdown-menu.show { display: block; }
+.dropdown-menu a {
+    display: block; padding: 8px 12px; color: #c9d1d9; text-decoration: none;
+    font-size: 13px;
+}
+.dropdown-menu a:hover { background: #21262d; }
+
+/* Context menu */
+#context-menu {
+    position: fixed; z-index: 200; background: #161b22;
+    border: 1px solid #30363d; border-radius: 4px; min-width: 160px;
+}
+#context-menu.hidden { display: none; }
+#context-menu a {
+    display: block; padding: 8px 12px; color: #c9d1d9; text-decoration: none;
+    font-size: 13px;
+}
+#context-menu a:hover { background: #21262d; }
 
 .main { display: flex; height: calc(100vh - 96px); }
 #cy { flex: 1; }
