@@ -1132,7 +1132,7 @@ func dbBackupCmd() *cobra.Command {
 			}
 			defer src.Close() //nolint:errcheck // best-effort cleanup
 
-			dst, err := os.Create(dstPath)
+			dst, err := os.Create(dstPath) // #nosec G304 -- path from user CLI arg
 			if err != nil {
 				return fmt.Errorf("creating backup file: %w", err)
 			}
