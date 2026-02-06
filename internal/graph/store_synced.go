@@ -80,7 +80,7 @@ func (s *SyncedStore) Close() error {
 
 func (s *SyncedStore) syncNode(ctx context.Context, node models.Node) error {
 	session := s.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	meta, _ := json.Marshal(node.Metadata)
 	var expiresAt any
@@ -118,7 +118,7 @@ func (s *SyncedStore) syncNode(ctx context.Context, node models.Node) error {
 
 func (s *SyncedStore) syncEdge(ctx context.Context, edge models.Edge) error {
 	session := s.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	meta, _ := json.Marshal(edge.Metadata)
 
@@ -142,7 +142,7 @@ func (s *SyncedStore) syncEdge(ctx context.Context, edge models.Edge) error {
 
 func (s *SyncedStore) deleteMemgraphNode(ctx context.Context, id string) error {
 	session := s.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	_, err := session.Run(ctx, `MATCH (n:Asset {id: $id}) DETACH DELETE n`, map[string]any{"id": id})
 	return err
