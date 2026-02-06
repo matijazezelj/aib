@@ -215,7 +215,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 
 		switch res.Kind {
 		case "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet":
-			nodeID := fmt.Sprintf("k8s:pod:%s", res.Metadata.Name)
+			nodeID := k8sNodeID("pod", ns, res.Metadata.Name)
 			meta := map[string]string{
 				"kind":      res.Kind,
 				"namespace": ns,
@@ -257,7 +257,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			}
 
 		case "Service":
-			nodeID := fmt.Sprintf("k8s:service:%s", res.Metadata.Name)
+			nodeID := k8sNodeID("service", ns, res.Metadata.Name)
 			meta := map[string]string{
 				"namespace":    ns,
 				"service_type": res.Spec.Type,
@@ -288,7 +288,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			result.Nodes = append(result.Nodes, node)
 
 		case "Ingress":
-			nodeID := fmt.Sprintf("k8s:ingress:%s", res.Metadata.Name)
+			nodeID := k8sNodeID("ingress", ns, res.Metadata.Name)
 			meta := map[string]string{
 				"namespace": ns,
 			}
@@ -323,7 +323,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			result.Nodes = append(result.Nodes, node)
 
 		case "Secret":
-			nodeID := fmt.Sprintf("k8s:secret:%s", res.Metadata.Name)
+			nodeID := k8sNodeID("secret", ns, res.Metadata.Name)
 			meta := map[string]string{
 				"namespace": ns,
 			}
@@ -346,7 +346,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			result.Nodes = append(result.Nodes, node)
 
 		case "ConfigMap":
-			nodeID := fmt.Sprintf("k8s:configmap:%s", res.Metadata.Name)
+			nodeID := k8sNodeID("configmap", ns, res.Metadata.Name)
 			meta := map[string]string{
 				"namespace": ns,
 			}
@@ -369,7 +369,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			result.Nodes = append(result.Nodes, node)
 
 		case "Namespace":
-			nodeID := fmt.Sprintf("k8s:namespace:%s", res.Metadata.Name)
+			nodeID := fmt.Sprintf("k8s:namespace:%s", res.Metadata.Name) // namespaces are not namespace-scoped
 			node := models.Node{
 				ID:         nodeID,
 				Name:       res.Metadata.Name,
@@ -386,7 +386,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 
 		case "Certificate":
 			// cert-manager Certificate CRD
-			nodeID := fmt.Sprintf("k8s:certificate:%s", res.Metadata.Name)
+			nodeID := k8sNodeID("certificate", ns, res.Metadata.Name)
 			meta := map[string]string{
 				"namespace": ns,
 			}
@@ -421,9 +421,14 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 
 	// Second pass: create edges.
 	for _, res := range resources {
+		ns := res.Metadata.Namespace
+		if ns == "" {
+			ns = "default"
+		}
+
 		switch res.Kind {
 		case "Service":
-			svcID := fmt.Sprintf("k8s:service:%s", res.Metadata.Name)
+			svcID := k8sNodeID("service", ns, res.Metadata.Name)
 			// Match service selector to workload pod template labels
 			svcSelector := res.Spec.Selector.GetLabels()
 			if len(svcSelector) > 0 {
@@ -442,7 +447,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			}
 
 		case "Ingress":
-			ingressID := fmt.Sprintf("k8s:ingress:%s", res.Metadata.Name)
+			ingressID := k8sNodeID("ingress", ns, res.Metadata.Name)
 
 			// Ingress → Service via backend rules
 			for _, rule := range res.Spec.Rules {
@@ -459,7 +464,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 					if svcName == "" {
 						continue
 					}
-					svcID := fmt.Sprintf("k8s:service:%s", svcName)
+					svcID := k8sNodeID("service", ns, svcName)
 					edgeID := fmt.Sprintf("%s->routes_to->%s", ingressID, svcID)
 					result.Edges = append(result.Edges, models.Edge{
 						ID:       edgeID,
@@ -476,7 +481,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				if tls.SecretName == "" {
 					continue
 				}
-				secretID := fmt.Sprintf("k8s:secret:%s", tls.SecretName)
+				secretID := k8sNodeID("secret", ns, tls.SecretName)
 				edgeID := fmt.Sprintf("%s->terminates_tls->%s", ingressID, secretID)
 				result.Edges = append(result.Edges, models.Edge{
 					ID:       edgeID,
@@ -504,13 +509,13 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			}
 
 		case "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet":
-			wlID := fmt.Sprintf("k8s:pod:%s", res.Metadata.Name)
+			wlID := k8sNodeID("pod", ns, res.Metadata.Name)
 			seen := make(map[string]bool)
 
 			// Volume mounts → Secrets and ConfigMaps
 			for _, vol := range res.Spec.Template.Spec.Volumes {
 				if vol.Secret != nil && vol.Secret.SecretName != "" {
-					secretID := fmt.Sprintf("k8s:secret:%s", vol.Secret.SecretName)
+					secretID := k8sNodeID("secret", ns, vol.Secret.SecretName)
 					eid := fmt.Sprintf("%s->mounts_secret->%s", wlID, secretID)
 					if !seen[eid] {
 						seen[eid] = true
@@ -524,7 +529,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 					}
 				}
 				if vol.ConfigMap != nil && vol.ConfigMap.Name != "" {
-					cmID := fmt.Sprintf("k8s:configmap:%s", vol.ConfigMap.Name)
+					cmID := k8sNodeID("configmap", ns, vol.ConfigMap.Name)
 					eid := fmt.Sprintf("%s->depends_on->%s", wlID, cmID)
 					if !seen[eid] {
 						seen[eid] = true
@@ -544,7 +549,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			for _, c := range allContainers {
 				for _, ef := range c.EnvFrom {
 					if ef.SecretRef != nil && ef.SecretRef.Name != "" {
-						secretID := fmt.Sprintf("k8s:secret:%s", ef.SecretRef.Name)
+						secretID := k8sNodeID("secret", ns, ef.SecretRef.Name)
 						eid := fmt.Sprintf("%s->mounts_secret->%s", wlID, secretID)
 						if !seen[eid] {
 							seen[eid] = true
@@ -558,7 +563,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 						}
 					}
 					if ef.ConfigMapRef != nil && ef.ConfigMapRef.Name != "" {
-						cmID := fmt.Sprintf("k8s:configmap:%s", ef.ConfigMapRef.Name)
+						cmID := k8sNodeID("configmap", ns, ef.ConfigMapRef.Name)
 						eid := fmt.Sprintf("%s->depends_on->%s", wlID, cmID)
 						if !seen[eid] {
 							seen[eid] = true
@@ -577,7 +582,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 						continue
 					}
 					if env.ValueFrom.SecretKeyRef != nil && env.ValueFrom.SecretKeyRef.Name != "" {
-						secretID := fmt.Sprintf("k8s:secret:%s", env.ValueFrom.SecretKeyRef.Name)
+						secretID := k8sNodeID("secret", ns, env.ValueFrom.SecretKeyRef.Name)
 						eid := fmt.Sprintf("%s->mounts_secret->%s", wlID, secretID)
 						if !seen[eid] {
 							seen[eid] = true
@@ -591,7 +596,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 						}
 					}
 					if env.ValueFrom.ConfigMapKeyRef != nil && env.ValueFrom.ConfigMapKeyRef.Name != "" {
-						cmID := fmt.Sprintf("k8s:configmap:%s", env.ValueFrom.ConfigMapKeyRef.Name)
+						cmID := k8sNodeID("configmap", ns, env.ValueFrom.ConfigMapKeyRef.Name)
 						eid := fmt.Sprintf("%s->depends_on->%s", wlID, cmID)
 						if !seen[eid] {
 							seen[eid] = true
@@ -610,8 +615,8 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 		case "Certificate":
 			// cert-manager Certificate → Secret it writes to
 			if res.Spec.SecretName != "" {
-				certID := fmt.Sprintf("k8s:certificate:%s", res.Metadata.Name)
-				secretID := fmt.Sprintf("k8s:secret:%s", res.Spec.SecretName)
+				certID := k8sNodeID("certificate", ns, res.Metadata.Name)
+				secretID := k8sNodeID("secret", ns, res.Spec.SecretName)
 				edgeID := fmt.Sprintf("%s->depends_on->%s", certID, secretID)
 				result.Edges = append(result.Edges, models.Edge{
 					ID:       edgeID,
@@ -641,6 +646,11 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 	}
 
 	return result, nil
+}
+
+// k8sNodeID builds a namespace-scoped node ID for Kubernetes resources.
+func k8sNodeID(kind, namespace, name string) string {
+	return fmt.Sprintf("k8s:%s:%s/%s", kind, namespace, name)
 }
 
 // splitYAMLDocuments splits multi-document YAML on "---" separators.

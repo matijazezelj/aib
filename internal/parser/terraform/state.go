@@ -3,6 +3,7 @@ package terraform
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,33 +31,86 @@ func (p *StateParser) Supported(path string) bool {
 	if !info.IsDir() {
 		return strings.HasSuffix(path, ".tfstate")
 	}
-	// Check if directory contains .tfstate files
-	matches, _ := filepath.Glob(filepath.Join(path, "*.tfstate"))
-	return len(matches) > 0
+	// Check recursively for .tfstate files
+	found := false
+	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".tfstate") {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 func (p *StateParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
-	path, err := parser.SafeResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
+	return p.ParseMulti(ctx, []string{path})
+}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, fmt.Errorf("stat %s: %w", path, err)
-	}
-
+// ParseMulti parses multiple paths (files or directories) with cross-state
+// edge resolution across all paths. It builds a single global ref map from
+// all state files before parsing, so edges between resources in different
+// state files or directories resolve correctly.
+func (p *StateParser) ParseMulti(ctx context.Context, paths []string) (*parser.ParseResult, error) {
 	var stateFiles []string
-	if info.IsDir() {
-		matches, _ := filepath.Glob(filepath.Join(path, "*.tfstate"))
-		stateFiles = matches
-	} else {
-		stateFiles = []string{path}
+	for _, path := range paths {
+		resolved, err := parser.SafeResolvePath(path)
+		if err != nil {
+			return nil, err
+		}
+
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", resolved, err)
+		}
+
+		if info.IsDir() {
+			_ = filepath.WalkDir(resolved, func(p string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				if !d.IsDir() && strings.HasSuffix(p, ".tfstate") {
+					stateFiles = append(stateFiles, p)
+				}
+				return nil
+			})
+		} else {
+			stateFiles = append(stateFiles, resolved)
+		}
 	}
 
 	result := &parser.ParseResult{}
+
+	// Phase 1: read all files and build a global ref map across all state files.
+	globalRefMap := make(map[string]string)
+	stateData := make(map[string][]byte)
 	for _, sf := range stateFiles {
-		r, err := parseStateFile(sf)
+		data, err := os.ReadFile(sf)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("reading %s: %v", sf, err))
+			continue
+		}
+		stateData[sf] = data
+		refs, err := buildRefMap(data)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("building ref map for %s: %v", sf, err))
+			continue
+		}
+		for k, v := range refs {
+			globalRefMap[k] = v
+		}
+	}
+
+	// Phase 2: parse each file using the global ref map for cross-state resolution.
+	for _, sf := range stateFiles {
+		data, ok := stateData[sf]
+		if !ok {
+			continue
+		}
+		r, err := parseStateBytesWithRefs(data, sf, globalRefMap)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to parse %s: %v", sf, err))
 			continue

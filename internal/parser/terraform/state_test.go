@@ -188,6 +188,112 @@ func TestParseStateBytes_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseDirectory_Recursive(t *testing.T) {
+	p := NewStateParser()
+
+	if !p.Supported("testdata/nested") {
+		t.Fatal("Supported() should return true for directory with nested .tfstate")
+	}
+
+	result, err := p.Parse(context.Background(), "testdata/nested")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Nodes) == 0 {
+		t.Fatal("expected nodes from nested directory, got 0")
+	}
+
+	found := false
+	for _, n := range result.Nodes {
+		if n.ID == "tf:vm:deep-nested-vm" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("missing tf:vm:deep-nested-vm from nested state file")
+	}
+}
+
+func TestParseCrossState_Edges(t *testing.T) {
+	p := NewStateParser()
+	result, err := p.Parse(context.Background(), "testdata/cross-state")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have nodes from both state files
+	nodeIDs := make(map[string]bool)
+	for _, n := range result.Nodes {
+		nodeIDs[n.ID] = true
+	}
+
+	if !nodeIDs["tf:network:shared-vpc"] {
+		t.Error("missing tf:network:shared-vpc from networking state")
+	}
+	if !nodeIDs["tf:vm:app-server-1"] {
+		t.Error("missing tf:vm:app-server-1 from compute state")
+	}
+
+	// Cross-state edges: VM depends_on network (defined in different state file)
+	edgeSet := make(map[string]bool)
+	for _, e := range result.Edges {
+		edgeSet[string(e.Type)+":"+e.FromID+"->"+e.ToID] = true
+	}
+
+	if !edgeSet[string(models.EdgeDependsOn)+":tf:vm:app-server-1->tf:network:shared-vpc"] {
+		t.Error("missing cross-state depends_on edge from vm to network")
+	}
+	if !edgeSet[string(models.EdgeDependsOn)+":tf:vm:app-server-1->tf:subnet:app-subnet"] {
+		t.Error("missing cross-state depends_on edge from vm to subnet")
+	}
+
+	// Attribute edges should also resolve cross-state
+	if !edgeSet[string(models.EdgeConnectsTo)+":tf:vm:app-server-1->tf:network:shared-vpc"] {
+		t.Error("missing cross-state connects_to edge from vm to network")
+	}
+	if !edgeSet[string(models.EdgeConnectsTo)+":tf:vm:app-server-1->tf:subnet:app-subnet"] {
+		t.Error("missing cross-state connects_to edge from vm to subnet")
+	}
+}
+
+func TestParseMulti_SeparateFiles(t *testing.T) {
+	p := NewStateParser()
+	result, err := p.ParseMulti(context.Background(), []string{
+		"testdata/cross-state/networking.tfstate",
+		"testdata/cross-state/compute.tfstate",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodeIDs := make(map[string]bool)
+	for _, n := range result.Nodes {
+		nodeIDs[n.ID] = true
+	}
+
+	if !nodeIDs["tf:network:shared-vpc"] {
+		t.Error("missing tf:network:shared-vpc")
+	}
+	if !nodeIDs["tf:vm:app-server-1"] {
+		t.Error("missing tf:vm:app-server-1")
+	}
+
+	// Cross-state edges should resolve even when paths are separate files
+	edgeSet := make(map[string]bool)
+	for _, e := range result.Edges {
+		edgeSet[string(e.Type)+":"+e.FromID+"->"+e.ToID] = true
+	}
+
+	if !edgeSet[string(models.EdgeDependsOn)+":tf:vm:app-server-1->tf:network:shared-vpc"] {
+		t.Error("missing cross-state depends_on edge from vm to network via ParseMulti")
+	}
+	if !edgeSet[string(models.EdgeConnectsTo)+":tf:vm:app-server-1->tf:network:shared-vpc"] {
+		t.Error("missing cross-state connects_to edge from vm to network via ParseMulti")
+	}
+}
+
 func TestParseStateBytes_DataResourceSkipped(t *testing.T) {
 	state := `{
 		"version": 4,

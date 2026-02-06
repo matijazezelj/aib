@@ -128,19 +128,19 @@ func scanTerraformCmd() *cobra.Command {
 	var workspace string
 
 	cmd := &cobra.Command{
-		Use:   "terraform <path>",
+		Use:   "terraform <path> [path...]",
 		Short: "Scan Terraform state files, directories, or remote backends",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, _ := openStore()
 			defer store.Close()
 			ctx := cmd.Context()
 
-			path := args[0]
+			sourcePath := strings.Join(args, ", ")
 
 			scanID, _ := store.RecordScan(ctx, graph.Scan{
 				Source:     "terraform",
-				SourcePath: path,
+				SourcePath: sourcePath,
 				StartedAt:  time.Now(),
 				Status:     "running",
 			})
@@ -149,25 +149,17 @@ func scanTerraformCmd() *cobra.Command {
 			var err error
 
 			if remote {
-				if workspace == "*" {
-					fmt.Printf("Pulling state from all workspaces in %s...\n", path)
-					result, err = terraform.PullAllWorkspaces(ctx, path)
-				} else {
-					wsLabel := "default"
-					if workspace != "" {
-						wsLabel = workspace
-					}
-					fmt.Printf("Pulling remote state from %s (workspace: %s)...\n", path, wsLabel)
-					result, err = terraform.PullRemoteState(ctx, path, workspace)
-				}
+				result, err = terraform.PullRemoteMulti(ctx, args, workspace)
 			} else {
 				p := terraform.NewStateParser()
-				if !p.Supported(path) {
-					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
-					return fmt.Errorf("path %q is not a supported Terraform source", path)
+				for _, path := range args {
+					if !p.Supported(path) {
+						_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
+						return fmt.Errorf("path %q is not a supported Terraform source", path)
+					}
 				}
-				fmt.Printf("Scanning Terraform state at %s...\n", path)
-				result, err = p.Parse(ctx, path)
+				fmt.Printf("Scanning Terraform state across %d path(s)...\n", len(args))
+				result, err = p.ParseMulti(ctx, args)
 			}
 
 			if err != nil {
@@ -205,55 +197,70 @@ func scanAnsibleCmd() *cobra.Command {
 	var playbooks string
 
 	cmd := &cobra.Command{
-		Use:   "ansible <inventory-path>",
+		Use:   "ansible <inventory-path> [path...]",
 		Short: "Scan Ansible inventory and playbooks for infrastructure assets",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, _ := openStore()
 			defer store.Close()
 			ctx := cmd.Context()
 
-			inventoryPath := args[0]
+			sourcePath := strings.Join(args, ", ")
 
 			scanID, _ := store.RecordScan(ctx, graph.Scan{
 				Source:     "ansible",
-				SourcePath: inventoryPath,
+				SourcePath: sourcePath,
 				StartedAt:  time.Now(),
 				Status:     "running",
 			})
 
 			p := ansible.NewAnsibleParser(playbooks)
-			if !p.Supported(inventoryPath) {
-				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
-				return fmt.Errorf("path %q is not a supported Ansible inventory", inventoryPath)
-			}
+			var allResults []*parser.ParseResult
 
-			fmt.Printf("Scanning Ansible inventory at %s...\n", inventoryPath)
-			if playbooks != "" {
-				fmt.Printf("  Playbooks directory: %s\n", playbooks)
-			}
-
-			result, err := p.Parse(ctx, inventoryPath)
-			if err != nil {
-				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
-				return fmt.Errorf("parsing: %w", err)
-			}
-
-			for _, n := range result.Nodes {
-				if err := store.UpsertNode(ctx, n); err != nil {
-					logger.Warn("failed to store node", "id", n.ID, "error", err)
+			for _, inventoryPath := range args {
+				if !p.Supported(inventoryPath) {
+					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					return fmt.Errorf("path %q is not a supported Ansible inventory", inventoryPath)
 				}
-			}
-			for _, e := range result.Edges {
-				if err := store.UpsertEdge(ctx, e); err != nil {
-					logger.Warn("failed to store edge", "id", e.ID, "error", err)
+
+				fmt.Printf("Scanning Ansible inventory at %s...\n", inventoryPath)
+				if playbooks != "" {
+					fmt.Printf("  Playbooks directory: %s\n", playbooks)
 				}
+
+				result, err := p.Parse(ctx, inventoryPath)
+				if err != nil {
+					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					return fmt.Errorf("parsing %s: %w", inventoryPath, err)
+				}
+				allResults = append(allResults, result)
 			}
 
-			_ = store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+			var totalNodes, totalEdges int
+			var allWarnings []string
+			// Store all nodes first, then all edges (ensures cross-source edges resolve)
+			for _, result := range allResults {
+				for _, n := range result.Nodes {
+					if err := store.UpsertNode(ctx, n); err != nil {
+						logger.Warn("failed to store node", "id", n.ID, "error", err)
+					}
+				}
+				totalNodes += len(result.Nodes)
+			}
+			for _, result := range allResults {
+				for _, e := range result.Edges {
+					if err := store.UpsertEdge(ctx, e); err != nil {
+						logger.Warn("failed to store edge", "id", e.ID, "error", err)
+					}
+				}
+				totalEdges += len(result.Edges)
+				allWarnings = append(allWarnings, result.Warnings...)
+			}
 
-			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
-			for _, w := range result.Warnings {
+			_ = store.UpdateScan(ctx, scanID, "completed", totalNodes, totalEdges)
+
+			fmt.Printf("Discovered %d nodes, %d edges\n", totalNodes, totalEdges)
+			for _, w := range allWarnings {
 				fmt.Printf("  warning: %s\n", w)
 			}
 			return nil
@@ -269,60 +276,77 @@ func scanK8sCmd() *cobra.Command {
 	var helm bool
 
 	cmd := &cobra.Command{
-		Use:   "kubernetes <path>",
+		Use:   "kubernetes <path> [path...]",
 		Short: "Scan Kubernetes manifests or Helm charts",
 		Aliases: []string{"k8s"},
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, _ := openStore()
 			defer store.Close()
 			ctx := cmd.Context()
 
-			path := args[0]
+			sourcePath := strings.Join(args, ", ")
 
 			scanID, _ := store.RecordScan(ctx, graph.Scan{
 				Source:     "kubernetes",
-				SourcePath: path,
+				SourcePath: sourcePath,
 				StartedAt:  time.Now(),
 				Status:     "running",
 			})
 
-			var result *parser.ParseResult
-			var err error
+			var allResults []*parser.ParseResult
 
 			if helm {
+				path := args[0]
 				fmt.Printf("Rendering Helm chart at %s...\n", path)
-				result, err = kubernetes.RenderHelm(ctx, path, valuesFile)
+				result, err := kubernetes.RenderHelm(ctx, path, valuesFile)
+				if err != nil {
+					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
+					return fmt.Errorf("parsing: %w", err)
+				}
+				allResults = append(allResults, result)
 			} else {
 				p := kubernetes.NewK8sParser(valuesFile)
-				if !p.Supported(path) {
-					_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
-					return fmt.Errorf("path %q is not a supported Kubernetes source", path)
-				}
-				fmt.Printf("Scanning Kubernetes manifests at %s...\n", path)
-				result, err = p.Parse(ctx, path)
-			}
-
-			if err != nil {
-				_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
-				return fmt.Errorf("parsing: %w", err)
-			}
-
-			for _, n := range result.Nodes {
-				if err := store.UpsertNode(ctx, n); err != nil {
-					logger.Warn("failed to store node", "id", n.ID, "error", err)
-				}
-			}
-			for _, e := range result.Edges {
-				if err := store.UpsertEdge(ctx, e); err != nil {
-					logger.Warn("failed to store edge", "id", e.ID, "error", err)
+				for _, path := range args {
+					if !p.Supported(path) {
+						_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
+						return fmt.Errorf("path %q is not a supported Kubernetes source", path)
+					}
+					fmt.Printf("Scanning Kubernetes manifests at %s...\n", path)
+					result, err := p.Parse(ctx, path)
+					if err != nil {
+						_ = store.UpdateScan(ctx, scanID, "failed", 0, 0)
+						return fmt.Errorf("parsing %s: %w", path, err)
+					}
+					allResults = append(allResults, result)
 				}
 			}
 
-			_ = store.UpdateScan(ctx, scanID, "completed", len(result.Nodes), len(result.Edges))
+			var totalNodes, totalEdges int
+			var allWarnings []string
+			// Store all nodes first, then all edges (ensures cross-source edges resolve)
+			for _, result := range allResults {
+				for _, n := range result.Nodes {
+					if err := store.UpsertNode(ctx, n); err != nil {
+						logger.Warn("failed to store node", "id", n.ID, "error", err)
+					}
+				}
+				totalNodes += len(result.Nodes)
+			}
+			for _, result := range allResults {
+				for _, e := range result.Edges {
+					if err := store.UpsertEdge(ctx, e); err != nil {
+						logger.Warn("failed to store edge", "id", e.ID, "error", err)
+					}
+				}
+				totalEdges += len(result.Edges)
+				allWarnings = append(allWarnings, result.Warnings...)
+			}
 
-			fmt.Printf("Discovered %d nodes, %d edges\n", len(result.Nodes), len(result.Edges))
-			for _, w := range result.Warnings {
+			_ = store.UpdateScan(ctx, scanID, "completed", totalNodes, totalEdges)
+
+			fmt.Printf("Discovered %d nodes, %d edges\n", totalNodes, totalEdges)
+			for _, w := range allWarnings {
 				fmt.Printf("  warning: %s\n", w)
 			}
 			return nil

@@ -32,31 +32,42 @@ cd aib
 make build
 ```
 
-### Scan a Terraform state file
+### Scan Terraform state files
 
 ```bash
+# Single file or directory (recursive)
 ./bin/aib scan terraform /path/to/terraform.tfstate
+./bin/aib scan terraform /path/to/terraform/directory/
+
+# Multiple paths — cross-state edges resolve automatically
+./bin/aib scan terraform networking.tfstate compute.tfstate data.tfstate
+./bin/aib scan terraform staging/ production/
 ```
 
-### Scan from a remote backend
+### Scan from remote backends
 
 ```bash
-./bin/aib scan terraform /path/to/terraform/project --remote
+# Multiple remote projects with cross-state resolution
+./bin/aib scan terraform --remote project-networking/ project-compute/
+
+# All workspaces across multiple projects
+./bin/aib scan terraform --remote --workspace='*' project-a/ project-b/
 ```
 
 ### Scan Kubernetes manifests
 
 ```bash
 ./bin/aib scan k8s /path/to/manifests/
+./bin/aib scan k8s base.yaml overlays/prod/ overlays/staging/
 ./bin/aib scan k8s /path/to/helm/chart --helm
 ./bin/aib scan k8s /path/to/helm/chart --helm --values=values-prod.yaml
 ```
 
-### Scan an Ansible inventory
+### Scan Ansible inventories
 
 ```bash
 ./bin/aib scan ansible /path/to/inventory.ini
-./bin/aib scan ansible /path/to/inventory.yml --playbooks=/path/to/playbooks/
+./bin/aib scan ansible staging.ini production.ini --playbooks=/path/to/playbooks/
 ```
 
 ### View the graph
@@ -110,48 +121,64 @@ Scan Terraform state files to discover infrastructure assets and their dependenc
 
 ```
 $ aib scan terraform terraform.tfstate
-Scanning Terraform state at terraform.tfstate...
+Scanning Terraform state across 1 path(s)...
 Discovered 6 nodes, 8 edges
 ```
 
-AIB supports scanning directories containing multiple `.tfstate` files:
+AIB recursively discovers `.tfstate` files in directories and supports scanning multiple paths at once. When multiple paths are given, a single global ref map is built so that **cross-state edges resolve automatically** — a VM in one state file that depends on a network defined in another will get proper `depends_on` and `connects_to` edges:
 
 ```bash
+# Recursive directory scan
 aib scan terraform /path/to/terraform/directory/
+
+# Multiple paths with cross-state resolution
+aib scan terraform networking/ compute/ data/
+aib scan terraform staging.tfstate production.tfstate
 ```
 
 #### Remote State
 
-Pull state directly from remote backends (S3, GCS, Azure, etc.) using `terraform state pull`:
+Pull state directly from remote backends (S3, GCS, Azure, etc.) using `terraform state pull`. Multiple remote projects are supported with cross-state edge resolution:
 
 ```bash
-# Pull from the current/default workspace
-aib scan terraform /path/to/terraform/project --remote
+# Single project, default workspace
+aib scan terraform /path/to/project --remote
 
-# Pull from a specific workspace
-aib scan terraform /path/to/terraform/project --remote --workspace=production
+# Specific workspace
+aib scan terraform /path/to/project --remote --workspace=production
 
-# Pull from all workspaces and merge results
-aib scan terraform /path/to/terraform/project --remote --workspace='*'
+# All workspaces (cross-workspace resolution)
+aib scan terraform /path/to/project --remote --workspace='*'
+
+# Multiple remote projects (cross-state resolution across projects)
+aib scan terraform --remote project-networking/ project-compute/ project-data/
+
+# All workspaces across multiple projects
+aib scan terraform --remote --workspace='*' project-a/ project-b/
 ```
 
-This requires the `terraform` CLI to be installed and the project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
+This requires the `terraform` CLI to be installed and each project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
 
 #### Kubernetes / Helm
 
-Scan Kubernetes YAML manifests or Helm charts to map workloads, services, ingresses, secrets, and their dependencies:
+Scan Kubernetes YAML manifests or Helm charts to map workloads, services, ingresses, secrets, and their dependencies. Multiple paths are supported:
 
 ```bash
 # Single manifest file
 aib scan k8s deployment.yaml
 
-# Directory of manifests (recursive)
+# Directory of manifests
 aib scan k8s /path/to/k8s/manifests/
+
+# Multiple paths
+aib scan k8s base.yaml overlays/prod/ overlays/staging/
 
 # Helm chart (renders via helm template, then parses)
 aib scan k8s /path/to/chart --helm
 aib scan k8s /path/to/chart --helm --values=values-prod.yaml
 ```
+
+Node IDs are namespace-scoped (e.g. `k8s:pod:production/api-backend`, `k8s:service:default/redis-svc`).
 
 AIB discovers the following relationships:
 - **Service → Pod**: label selector matching (`member_of`)
@@ -165,7 +192,7 @@ This enables blast radius queries like "what breaks if the TLS cert secret expir
 
 #### Ansible
 
-Scan Ansible inventory files (INI or YAML format) to discover hosts, containers, and services:
+Scan Ansible inventory files (INI or YAML format) to discover hosts, containers, and services. Multiple paths are supported:
 
 ```bash
 # INI inventory
@@ -173,6 +200,9 @@ aib scan ansible /etc/ansible/hosts
 
 # YAML inventory
 aib scan ansible inventory.yml
+
+# Multiple inventories
+aib scan ansible staging.ini production.ini
 
 # With playbook analysis (discovers containers, services, and managed_by edges)
 aib scan ansible inventory.ini --playbooks=./playbooks/
@@ -427,7 +457,7 @@ AIB maps Terraform resource types to asset types:
 | Cloudflare | `cloudflare_record` | `dns_record` |
 | TLS | `tls_self_signed_cert`, `acme_certificate` | `certificate` |
 
-Edges are created from `dependencies` in `.tfstate` and from attribute references (network, subnetwork, vpc_id).
+Edges are created from `dependencies` in `.tfstate` and from attribute references (network, subnetwork, vpc_id). When scanning multiple state files, cross-state edges are resolved automatically.
 
 ### Kubernetes
 

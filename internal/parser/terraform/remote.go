@@ -12,15 +12,18 @@ import (
 	"github.com/matijazezelj/aib/pkg/models"
 )
 
-// PullRemoteState runs `terraform state pull` in the given directory
-// and returns the parsed state as a ParseResult.
-func PullRemoteState(ctx context.Context, projectDir string, workspace string) (*parser.ParseResult, error) {
-	// Verify terraform is installed
+// pulledState holds raw bytes pulled from a remote backend, tagged with a label.
+type pulledState struct {
+	label string // e.g. "project-a" or "project-a/staging"
+	data  []byte
+}
+
+// pullStateBytes runs `terraform state pull` and returns raw JSON bytes.
+func pullStateBytes(ctx context.Context, projectDir, workspace string) ([]byte, error) {
 	if _, err := exec.LookPath("terraform"); err != nil {
 		return nil, fmt.Errorf("terraform CLI not found in PATH: %w", err)
 	}
 
-	// Optionally switch workspace before pulling
 	if workspace != "" {
 		wsCmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "workspace", "select", workspace)
 		var wsErr bytes.Buffer
@@ -30,7 +33,6 @@ func PullRemoteState(ctx context.Context, projectDir string, workspace string) (
 		}
 	}
 
-	// Run terraform state pull
 	pullCmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "state", "pull")
 	var stdout, stderr bytes.Buffer
 	pullCmd.Stdout = &stdout
@@ -44,14 +46,90 @@ func PullRemoteState(ctx context.Context, projectDir string, workspace string) (
 		return nil, fmt.Errorf("terraform state pull returned empty output (no state found)")
 	}
 
-	// Verify it's valid JSON state
+	// Verify it's valid JSON
 	var state tfState
 	if err := json.Unmarshal(stdout.Bytes(), &state); err != nil {
 		return nil, fmt.Errorf("parsing state pull output: %w", err)
 	}
 
-	// Parse using the same logic as local state files
-	return parseStateBytes(stdout.Bytes(), projectDir)
+	return stdout.Bytes(), nil
+}
+
+// PullRemoteState runs `terraform state pull` in the given directory
+// and returns the parsed state as a ParseResult.
+func PullRemoteState(ctx context.Context, projectDir string, workspace string) (*parser.ParseResult, error) {
+	data, err := pullStateBytes(ctx, projectDir, workspace)
+	if err != nil {
+		return nil, err
+	}
+	return parseStateBytes(data, projectDir)
+}
+
+// PullRemoteMulti pulls state from multiple project directories with cross-state
+// edge resolution. When workspace is "*", all workspaces are pulled from each path.
+func PullRemoteMulti(ctx context.Context, projectDirs []string, workspace string) (*parser.ParseResult, error) {
+	// Collect raw state bytes from all sources
+	var states []pulledState
+	var warnings []string
+
+	for _, dir := range projectDirs {
+		if workspace == "*" {
+			workspaces, err := ListWorkspaces(ctx, dir)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("listing workspaces in %s: %v", dir, err))
+				continue
+			}
+			for _, ws := range workspaces {
+				fmt.Printf("Pulling state from %s (workspace: %s)...\n", dir, ws)
+				data, err := pullStateBytes(ctx, dir, ws)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("%s workspace %q: %v", dir, ws, err))
+					continue
+				}
+				states = append(states, pulledState{label: dir + "/" + ws, data: data})
+			}
+		} else {
+			wsLabel := "default"
+			if workspace != "" {
+				wsLabel = workspace
+			}
+			fmt.Printf("Pulling remote state from %s (workspace: %s)...\n", dir, wsLabel)
+			data, err := pullStateBytes(ctx, dir, workspace)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s: %v", dir, err))
+				continue
+			}
+			states = append(states, pulledState{label: dir, data: data})
+		}
+	}
+
+	// Phase 1: build global ref map across all pulled states
+	globalRefMap := make(map[string]string)
+	for _, s := range states {
+		refs, err := buildRefMap(s.data)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("building ref map for %s: %v", s.label, err))
+			continue
+		}
+		for k, v := range refs {
+			globalRefMap[k] = v
+		}
+	}
+
+	// Phase 2: parse each state with the global ref map
+	result := &parser.ParseResult{Warnings: warnings}
+	for _, s := range states {
+		r, err := parseStateBytesWithRefs(s.data, s.label, globalRefMap)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("parsing %s: %v", s.label, err))
+			continue
+		}
+		result.Nodes = append(result.Nodes, r.Nodes...)
+		result.Edges = append(result.Edges, r.Edges...)
+		result.Warnings = append(result.Warnings, r.Warnings...)
+	}
+
+	return result, nil
 }
 
 // ListWorkspaces returns the list of terraform workspaces in a project directory.
@@ -79,43 +157,31 @@ func ListWorkspaces(ctx context.Context, projectDir string) ([]string, error) {
 	return workspaces, nil
 }
 
-// PullAllWorkspaces pulls state from all workspaces in a project and merges results.
+// PullAllWorkspaces pulls state from all workspaces in a project with
+// cross-workspace edge resolution.
 func PullAllWorkspaces(ctx context.Context, projectDir string) (*parser.ParseResult, error) {
-	workspaces, err := ListWorkspaces(ctx, projectDir)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(workspaces) == 0 {
-		return nil, fmt.Errorf("no workspaces found in %s", projectDir)
-	}
-
-	result := &parser.ParseResult{}
-	for _, ws := range workspaces {
-		r, err := PullRemoteState(ctx, projectDir, ws)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("workspace %q: %v", ws, err))
-			continue
-		}
-		result.Nodes = append(result.Nodes, r.Nodes...)
-		result.Edges = append(result.Edges, r.Edges...)
-		result.Warnings = append(result.Warnings, r.Warnings...)
-	}
-
-	return result, nil
+	return PullRemoteMulti(ctx, []string{projectDir}, "*")
 }
 
 // parseStateBytes parses raw JSON state bytes (shared between local and remote).
+// It builds a local ref map and resolves edges within the single file.
 func parseStateBytes(data []byte, sourcePath string) (*parser.ParseResult, error) {
+	refs, err := buildRefMap(data)
+	if err != nil {
+		return nil, err
+	}
+	return parseStateBytesWithRefs(data, sourcePath, refs)
+}
+
+// buildRefMap performs the first pass over a state file: builds a mapping
+// from TF block names (e.g. "google_compute_network.prod_vpc") to node IDs
+// (e.g. "tf:network:prod-vpc").
+func buildRefMap(data []byte) (map[string]string, error) {
 	var state tfState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("parsing JSON: %w", err)
 	}
 
-	result := &parser.ParseResult{}
-	now := time.Now()
-
-	// First pass: build ref→nodeID mapping.
 	refToNodeID := make(map[string]string)
 	for _, res := range state.Resources {
 		if res.Mode == "data" {
@@ -134,8 +200,20 @@ func parseStateBytes(data []byte, sourcePath string) (*parser.ParseResult, error
 			refToNodeID[ref] = nodeID
 		}
 	}
+	return refToNodeID, nil
+}
 
-	// Second pass: create nodes and edges.
+// parseStateBytesWithRefs performs the second pass: creates nodes and edges
+// using the provided refToNodeID map (which may span multiple state files).
+func parseStateBytesWithRefs(data []byte, sourcePath string, refToNodeID map[string]string) (*parser.ParseResult, error) {
+	var state tfState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("parsing JSON: %w", err)
+	}
+
+	result := &parser.ParseResult{}
+	now := time.Now()
+
 	for _, res := range state.Resources {
 		if res.Mode == "data" {
 			continue

@@ -36,16 +36,16 @@ func TestParseManifests_SampleFile(t *testing.T) {
 	// Auto-created secrets: api-secret, api-tls-cert (from env ref and TLS/volume)
 	wantNodes := []string{
 		"k8s:namespace:production",
-		"k8s:secret:db-credentials",
-		"k8s:configmap:app-config",
-		"k8s:pod:api-backend",
-		"k8s:pod:worker",
-		"k8s:pod:redis",
-		"k8s:service:api-backend-svc",
-		"k8s:service:redis-svc",
-		"k8s:ingress:api-ingress",
-		"k8s:certificate:api-cert",
-		"k8s:secret:api-tls-cert",
+		"k8s:secret:production/db-credentials",
+		"k8s:configmap:production/app-config",
+		"k8s:pod:production/api-backend",
+		"k8s:pod:production/worker",
+		"k8s:pod:production/redis",
+		"k8s:service:production/api-backend-svc",
+		"k8s:service:production/redis-svc",
+		"k8s:ingress:production/api-ingress",
+		"k8s:certificate:production/api-cert",
+		"k8s:secret:production/api-tls-cert",
 	}
 
 	for _, id := range wantNodes {
@@ -76,35 +76,35 @@ func TestParseManifests_Edges(t *testing.T) {
 	}
 
 	// Service → workload (member_of via label selector)
-	if edgeMap["k8s:pod:api-backend->k8s:service:api-backend-svc"] != models.EdgeMemberOf {
+	if edgeMap["k8s:pod:production/api-backend->k8s:service:production/api-backend-svc"] != models.EdgeMemberOf {
 		t.Error("missing member_of edge: api-backend -> api-backend-svc")
 	}
-	if edgeMap["k8s:pod:redis->k8s:service:redis-svc"] != models.EdgeMemberOf {
+	if edgeMap["k8s:pod:production/redis->k8s:service:production/redis-svc"] != models.EdgeMemberOf {
 		t.Error("missing member_of edge: redis -> redis-svc")
 	}
 
 	// Ingress → Service (routes_to)
-	if edgeMap["k8s:ingress:api-ingress->k8s:service:api-backend-svc"] != models.EdgeRoutesTo {
+	if edgeMap["k8s:ingress:production/api-ingress->k8s:service:production/api-backend-svc"] != models.EdgeRoutesTo {
 		t.Error("missing routes_to edge: api-ingress -> api-backend-svc")
 	}
 
 	// Ingress → TLS secret (terminates_tls)
-	if edgeMap["k8s:ingress:api-ingress->k8s:secret:api-tls-cert"] != models.EdgeTerminatesTLS {
+	if edgeMap["k8s:ingress:production/api-ingress->k8s:secret:production/api-tls-cert"] != models.EdgeTerminatesTLS {
 		t.Error("missing terminates_tls edge: api-ingress -> api-tls-cert")
 	}
 
 	// Deployment → Secret (mounts_secret via envFrom)
-	if edgeMap["k8s:pod:api-backend->k8s:secret:db-credentials"] != models.EdgeMountsSecret {
+	if edgeMap["k8s:pod:production/api-backend->k8s:secret:production/db-credentials"] != models.EdgeMountsSecret {
 		t.Error("missing mounts_secret edge: api-backend -> db-credentials")
 	}
 
 	// Deployment → ConfigMap (depends_on via envFrom)
-	if edgeMap["k8s:pod:api-backend->k8s:configmap:app-config"] != models.EdgeDependsOn {
+	if edgeMap["k8s:pod:production/api-backend->k8s:configmap:production/app-config"] != models.EdgeDependsOn {
 		t.Error("missing depends_on edge: api-backend -> app-config")
 	}
 
 	// Certificate → Secret (depends_on via cert-manager)
-	if edgeMap["k8s:certificate:api-cert->k8s:secret:api-tls-cert"] != models.EdgeDependsOn {
+	if edgeMap["k8s:certificate:production/api-cert->k8s:secret:production/api-tls-cert"] != models.EdgeDependsOn {
 		t.Error("missing depends_on edge: api-cert -> api-tls-cert")
 	}
 }
@@ -121,7 +121,7 @@ func TestParseManifests_DeploymentMetadata(t *testing.T) {
 	}
 
 	for _, n := range result.Nodes {
-		if n.ID == "k8s:pod:api-backend" {
+		if n.ID == "k8s:pod:production/api-backend" {
 			if n.Metadata["kind"] != "Deployment" {
 				t.Errorf("kind = %q, want Deployment", n.Metadata["kind"])
 			}
@@ -137,7 +137,7 @@ func TestParseManifests_DeploymentMetadata(t *testing.T) {
 			return
 		}
 	}
-	t.Error("k8s:pod:api-backend not found")
+	t.Error("k8s:pod:production/api-backend not found")
 }
 
 func TestLabelsMatch(t *testing.T) {
