@@ -80,7 +80,7 @@ func TestProbe_CertDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	peerCerts := conn.ConnectionState().PeerCertificates
-	conn.Close()
+	_ = conn.Close()
 	if len(peerCerts) == 0 {
 		t.Fatal("no peer certificates")
 	}

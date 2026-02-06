@@ -44,8 +44,7 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestEnvExpansion(t *testing.T) {
-	os.Setenv("AIB_TEST_TOKEN", "my-secret-token")
-	defer os.Unsetenv("AIB_TEST_TOKEN")
+	t.Setenv("AIB_TEST_TOKEN", "my-secret-token")
 
 	cfg := &Config{
 		Server: ServerConfig{APIToken: "${AIB_TEST_TOKEN}"},
@@ -58,8 +57,7 @@ func TestEnvExpansion(t *testing.T) {
 }
 
 func TestEnvExpansion_WebhookHeaders(t *testing.T) {
-	os.Setenv("AIB_WEBHOOK_KEY", "secret-key")
-	defer os.Unsetenv("AIB_WEBHOOK_KEY")
+	t.Setenv("AIB_WEBHOOK_KEY", "secret-key")
 
 	headers := map[string]string{
 		"X-API-Key": "${AIB_WEBHOOK_KEY}",

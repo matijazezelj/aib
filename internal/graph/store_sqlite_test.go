@@ -20,7 +20,7 @@ func newTestStore(t *testing.T) *SQLiteStore {
 	if err := store.Init(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
 

@@ -45,7 +45,7 @@ func parseINIInventory(path string) ([]hostEntry, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 
 	var (
 		hosts         []hostEntry

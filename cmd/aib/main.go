@@ -130,7 +130,7 @@ func scanTerraformCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 
 			fmt.Printf("Scanning Terraform state across %d path(s)...\n", len(args))
 			sc := scanner.New(store, cfg, logger)
@@ -162,7 +162,7 @@ func scanAnsibleCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 
 			fmt.Printf("Scanning Ansible inventory across %d path(s)...\n", len(args))
 			sc := scanner.New(store, cfg, logger)
@@ -198,7 +198,7 @@ func scanK8sCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 
 			sc := scanner.New(store, cfg, logger)
 
@@ -273,7 +273,7 @@ func graphShowCmd() *cobra.Command {
 		Short: "Print graph summary",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, _ := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			nodeCount, _ := store.NodeCount(ctx)
@@ -308,7 +308,7 @@ func graphNodesCmd() *cobra.Command {
 		Short: "List all nodes",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, _ := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			nodes, err := store.ListNodes(ctx, graph.NodeFilter{
@@ -319,9 +319,9 @@ func graphNodesCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tNAME\tTYPE\tSOURCE\tPROVIDER")
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tTYPE\tSOURCE\tPROVIDER")
 			for _, n := range nodes {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", n.ID, n.Name, n.Type, n.Source, n.Provider)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", n.ID, n.Name, n.Type, n.Source, n.Provider)
 			}
 			return w.Flush()
 		},
@@ -341,7 +341,7 @@ func graphEdgesCmd() *cobra.Command {
 		Short: "List all edges",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, _ := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			edges, err := store.ListEdges(ctx, graph.EdgeFilter{
@@ -352,9 +352,9 @@ func graphEdgesCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "FROM\tTYPE\tTO")
+			_, _ = fmt.Fprintln(w, "FROM\tTYPE\tTO")
 			for _, e := range edges {
-				fmt.Fprintf(w, "%s\t%s\t%s\n", e.FromID, e.Type, e.ToID)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", e.FromID, e.Type, e.ToID)
 			}
 			return w.Flush()
 		},
@@ -373,7 +373,7 @@ func graphNeighborsCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, _ := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			nodeID := args[0]
@@ -393,9 +393,9 @@ func graphNeighborsCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tNAME\tTYPE\tSOURCE")
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tTYPE\tSOURCE")
 			for _, n := range neighbors {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", n.ID, n.Name, n.Type, n.Source)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", n.ID, n.Name, n.Type, n.Source)
 			}
 			return w.Flush()
 		},
@@ -410,7 +410,7 @@ func graphExportCmd() *cobra.Command {
 		Short: "Export graph in various formats",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, _ := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			var output string
@@ -446,7 +446,7 @@ func graphSyncCmd() *cobra.Command {
 		Short: "Synchronize graph data from SQLite to Memgraph",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 
 			if !cfg.Storage.Memgraph.Enabled {
 				return fmt.Errorf("memgraph is not enabled in configuration (set storage.memgraph.enabled: true)")
@@ -461,7 +461,7 @@ func graphSyncCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("connecting to memgraph: %w", err)
 			}
-			defer driver.Close(context.Background())
+			defer driver.Close(context.Background()) //nolint:errcheck // best-effort cleanup
 
 			return graph.SyncToMemgraph(cmd.Context(), store, driver, logger)
 		},
@@ -486,8 +486,8 @@ func impactNodeCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, engine, _ := openStoreAndEngine()
-			defer store.Close()
-			defer engine.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
+			defer engine.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			nodeID := args[0]
@@ -604,7 +604,7 @@ func certsListCmd() *cobra.Command {
 		Short: "List all tracked certificates",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)
@@ -619,13 +619,13 @@ func certsListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tNAME\tEXPIRES\tDAYS\tSTATUS")
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tEXPIRES\tDAYS\tSTATUS")
 			for _, c := range certList {
 				expires := "-"
 				if c.Node.ExpiresAt != nil {
 					expires = c.Node.ExpiresAt.Format("2006-01-02")
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
 					c.Node.ID, c.Node.Name, expires, c.DaysRemaining, strings.ToUpper(c.Status))
 			}
 			return w.Flush()
@@ -641,7 +641,7 @@ func certsExpiringCmd() *cobra.Command {
 		Short: "Show certificates expiring within threshold",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)
@@ -656,9 +656,9 @@ func certsExpiringCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tNAME\tEXPIRES\tDAYS\tSTATUS")
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tEXPIRES\tDAYS\tSTATUS")
 			for _, c := range certList {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
 					c.Node.ID, c.Node.Name, c.Node.ExpiresAt.Format("2006-01-02"), c.DaysRemaining, strings.ToUpper(c.Status))
 			}
 			return w.Flush()
@@ -676,7 +676,7 @@ func certsProbeCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)
@@ -703,7 +703,7 @@ func certsCheckCmd() *cobra.Command {
 		Short: "Re-probe all known certificate endpoints",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			store, cfg := openStore()
-			defer store.Close()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)

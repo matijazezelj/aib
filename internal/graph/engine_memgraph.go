@@ -60,7 +60,7 @@ func (e *MemgraphEngine) Close() error {
 // BlastRadius returns all nodes affected if startNodeID fails, using Cypher traversal.
 func (e *MemgraphEngine) BlastRadius(ctx context.Context, startNodeID string) (*ImpactResult, error) {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	// Find all nodes that transitively point to the start node (upstream traversal).
 	// Edge direction: (from)-[:EDGE]->(to) means "from depends on to".
@@ -122,7 +122,7 @@ func (e *MemgraphEngine) BlastRadiusTree(ctx context.Context, startNodeID string
 	// Fetch the root node and all upstream edges in the affected subgraph,
 	// then reconstruct the tree in Go (same structure as LocalEngine).
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	// Get root node
 	rootResult, err := session.Run(ctx, `
@@ -243,7 +243,7 @@ type mgEdgeInfo struct {
 // Neighbors returns all nodes connected to nodeID in either direction.
 func (e *MemgraphEngine) Neighbors(ctx context.Context, nodeID string) ([]models.Node, error) {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	cypher := `
 		MATCH (n:Asset {id: $id})-[r:EDGE]-(neighbor:Asset)
@@ -278,7 +278,7 @@ func (e *MemgraphEngine) Neighbors(ctx context.Context, nodeID string) ([]models
 // ShortestPath finds the shortest path between two nodes using Cypher shortestPath.
 func (e *MemgraphEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]models.Node, []models.Edge, error) {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	cypher := `
 		MATCH p = shortestPath((a:Asset {id: $fromID})-[*]-(b:Asset {id: $toID}))
@@ -321,7 +321,7 @@ func (e *MemgraphEngine) DependencyChain(ctx context.Context, nodeID string, max
 	}
 
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	cypher := fmt.Sprintf(`
 		MATCH (start:Asset {id: $id})-[*1..%d]->(dep:Asset)

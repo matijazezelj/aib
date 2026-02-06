@@ -199,7 +199,7 @@ func (s *SQLiteStore) ListNodes(ctx context.Context, filter NodeFilter) ([]model
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	var nodes []models.Node
 	for rows.Next() {
@@ -236,7 +236,7 @@ func (s *SQLiteStore) ListEdges(ctx context.Context, filter EdgeFilter) ([]model
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	var edges []models.Edge
 	for rows.Next() {
@@ -287,7 +287,7 @@ func (s *SQLiteStore) GetNeighbors(ctx context.Context, nodeID string) ([]models
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	var nodes []models.Node
 	for rows.Next() {
@@ -359,7 +359,7 @@ func (s *SQLiteStore) ListScans(ctx context.Context, limit int) ([]Scan, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	var scans []Scan
 	for rows.Next() {
@@ -385,7 +385,7 @@ func (s *SQLiteStore) NodeCountByType(ctx context.Context) (map[string]int, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	counts := make(map[string]int)
 	for rows.Next() {
@@ -405,7 +405,7 @@ func (s *SQLiteStore) EdgeCountByType(ctx context.Context) (map[string]int, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	counts := make(map[string]int)
 	for rows.Next() {
@@ -433,7 +433,7 @@ func (s *SQLiteStore) ExpiringNodes(ctx context.Context, days int) ([]models.Nod
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
 
 	var nodes []models.Node
 	for rows.Next() {

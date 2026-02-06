@@ -40,7 +40,7 @@ func Probe(hostPort string, timeout time.Duration) (*ProbeResult, error) {
 			Error: err.Error(),
 		}, fmt.Errorf("connecting to %s: %w", hostPort, err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // best-effort cleanup
 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
