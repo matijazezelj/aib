@@ -37,6 +37,12 @@ type SourcesConfig struct {
 	Terraform  []TerraformSource  `mapstructure:"terraform"`
 	Kubernetes []KubernetesSource `mapstructure:"kubernetes"`
 	Ansible    []AnsibleSource    `mapstructure:"ansible"`
+	Compose    []ComposeSource    `mapstructure:"compose"`
+}
+
+// ComposeSource configures a Docker Compose file or directory to scan.
+type ComposeSource struct {
+	Path string `mapstructure:"path"`
 }
 
 // TerraformSource configures a Terraform state file or directory to scan.

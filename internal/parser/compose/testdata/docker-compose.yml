@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  web:
+    image: nginx:1.25
+    ports:
+      - "80:80"
+    networks:
+      - frontend
+    depends_on:
+      - api
+    volumes:
+      - static:/usr/share/nginx/html
+
+  api:
+    image: myapp/api:latest
+    environment:
+      DB_HOST: db
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - logs:/var/log/app
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: myapp
+    networks:
+      - backend
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  static: {}
+  logs: {}
+  pgdata:
+    driver: local

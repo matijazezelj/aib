@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -44,6 +47,7 @@ func main() {
 		graphCmd(),
 		impactCmd(),
 		certsCmd(),
+		dbCmd(),
 		serveCmd(),
 		versionCmd(),
 	)
@@ -117,6 +121,7 @@ func scanCmd() *cobra.Command {
 	cmd.AddCommand(scanTerraformCmd())
 	cmd.AddCommand(scanAnsibleCmd())
 	cmd.AddCommand(scanK8sCmd())
+	cmd.AddCommand(scanComposeCmd())
 	return cmd
 }
 
@@ -245,6 +250,30 @@ func scanK8sCmd() *cobra.Command {
 	return cmd
 }
 
+func scanComposeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "compose <path> [path...]",
+		Short: "Scan Docker Compose files for service dependencies",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cfg := openStore()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
+
+			fmt.Printf("Scanning Docker Compose across %d path(s)...\n", len(args))
+			sc := scanner.New(store, cfg, logger)
+			r := sc.RunSync(cmd.Context(), scanner.ScanRequest{
+				Source: "compose",
+				Paths:  args,
+			})
+			printScanResult(r)
+			if r.Error != nil {
+				return r.Error
+			}
+			return nil
+		},
+	}
+}
+
 func printScanResult(r scanner.ScanResult) {
 	if r.Error != nil {
 		fmt.Printf("Scan failed: %v\n", r.Error)
@@ -263,7 +292,7 @@ func graphCmd() *cobra.Command {
 		Use:   "graph",
 		Short: "Query the asset graph",
 	}
-	cmd.AddCommand(graphShowCmd(), graphNodesCmd(), graphEdgesCmd(), graphNeighborsCmd(), graphExportCmd(), graphSyncCmd())
+	cmd.AddCommand(graphShowCmd(), graphNodesCmd(), graphEdgesCmd(), graphNeighborsCmd(), graphPathCmd(), graphDepsCmd(), graphPruneCmd(), graphExportCmd(), graphSyncCmd())
 	return cmd
 }
 
@@ -400,6 +429,172 @@ func graphNeighborsCmd() *cobra.Command {
 			return w.Flush()
 		},
 	}
+}
+
+func graphPathCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "path <from-id> <to-id>",
+		Short: "Find shortest path between two nodes",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, engine, _ := openStoreAndEngine()
+			defer store.Close()  //nolint:errcheck // best-effort cleanup
+			defer engine.Close() //nolint:errcheck // best-effort cleanup
+			ctx := cmd.Context()
+
+			fromID, toID := args[0], args[1]
+
+			// Validate both nodes exist
+			fromNode, err := store.GetNode(ctx, fromID)
+			if err != nil {
+				return err
+			}
+			if fromNode == nil {
+				return fmt.Errorf("node %q not found", fromID)
+			}
+			toNode, err := store.GetNode(ctx, toID)
+			if err != nil {
+				return err
+			}
+			if toNode == nil {
+				return fmt.Errorf("node %q not found", toID)
+			}
+
+			nodes, _, err := engine.ShortestPath(ctx, fromID, toID)
+			if err != nil {
+				return err
+			}
+
+			_, _ = fmt.Fprintf(os.Stdout, "Shortest path: %s → %s (%d steps)\n\n", fromID, toID, len(nodes)-1)
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			_, _ = fmt.Fprintln(w, "STEP\tNODE ID\tNAME\tTYPE")
+			for i, n := range nodes {
+				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", i, n.ID, n.Name, n.Type)
+			}
+			return w.Flush()
+		},
+	}
+}
+
+func graphDepsCmd() *cobra.Command {
+	var depth int
+
+	cmd := &cobra.Command{
+		Use:   "deps <node-id>",
+		Short: "Show downstream dependencies of a node",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, engine, _ := openStoreAndEngine()
+			defer store.Close()  //nolint:errcheck // best-effort cleanup
+			defer engine.Close() //nolint:errcheck // best-effort cleanup
+			ctx := cmd.Context()
+
+			nodeID := args[0]
+			node, err := store.GetNode(ctx, nodeID)
+			if err != nil {
+				return err
+			}
+			if node == nil {
+				return fmt.Errorf("node %q not found", nodeID)
+			}
+
+			deps, err := engine.DependencyChain(ctx, nodeID, depth)
+			if err != nil {
+				return err
+			}
+
+			_, _ = fmt.Fprintf(os.Stdout, "Dependencies of %s (%s, %s) — depth %d\n\n", node.Name, node.Type, node.Source, depth)
+
+			if len(deps) == 0 {
+				_, _ = fmt.Fprintln(os.Stdout, "No dependencies found.")
+				return nil
+			}
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tTYPE\tSOURCE")
+			for _, n := range deps {
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", n.ID, n.Name, n.Type, n.Source)
+			}
+			return w.Flush()
+		},
+	}
+
+	cmd.Flags().IntVar(&depth, "depth", 10, "maximum traversal depth (1-50)")
+	return cmd
+}
+
+func graphPruneCmd() *cobra.Command {
+	var staleDays int
+	var source string
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Remove stale nodes from the graph",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if staleDays <= 0 && source == "" {
+				return fmt.Errorf("specify at least one filter: --stale-days or --source")
+			}
+
+			store, _ := openStore()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
+			ctx := cmd.Context()
+
+			nodes, err := store.ListNodes(ctx, graph.NodeFilter{
+				StaleDays: staleDays,
+				Source:    source,
+			})
+			if err != nil {
+				return err
+			}
+
+			if len(nodes) == 0 {
+				_, _ = fmt.Fprintln(os.Stdout, "No matching nodes found.")
+				return nil
+			}
+
+			_, _ = fmt.Fprintf(os.Stdout, "Found %d nodes to prune:\n\n", len(nodes))
+			limit := 10
+			if len(nodes) < limit {
+				limit = len(nodes)
+			}
+			for _, n := range nodes[:limit] {
+				_, _ = fmt.Fprintf(os.Stdout, "  %s (%s, last seen: %s)\n", n.ID, n.Type, n.LastSeen.Format("2006-01-02"))
+			}
+			if len(nodes) > 10 {
+				_, _ = fmt.Fprintf(os.Stdout, "  ... and %d more\n", len(nodes)-10)
+			}
+
+			if !force {
+				_, _ = fmt.Fprintf(os.Stdout, "\nDelete %d nodes? [y/N]: ", len(nodes))
+				reader := bufio.NewReader(os.Stdin)
+				answer, _ := reader.ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					_, _ = fmt.Fprintln(os.Stdout, "Aborted.")
+					return nil
+				}
+			}
+
+			deleted := 0
+			for _, n := range nodes {
+				if err := store.DeleteNode(ctx, n.ID); err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "error deleting %s: %v\n", n.ID, err)
+					continue
+				}
+				deleted++
+			}
+
+			_, _ = fmt.Fprintf(os.Stdout, "Deleted %d nodes (and their edges).\n", deleted)
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&staleDays, "stale-days", 0, "delete nodes not seen in N days")
+	cmd.Flags().StringVar(&source, "source", "", "delete nodes from this source")
+	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
+	return cmd
 }
 
 func graphExportCmd() *cobra.Command {
@@ -764,13 +959,13 @@ func serveCmd() *cobra.Command {
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)
 			sc := scanner.New(store, cfg, logger)
-			srv := server.New(store, engine, tracker, sc, logger, listen, readOnly || cfg.Server.ReadOnly, cfg.Server.APIToken, cfg.Server.CORSOrigin)
+			srv := server.New(store, engine, tracker, sc, logger, listen, readOnly || cfg.Server.ReadOnly, cfg.Server.APIToken, cfg.Server.CORSOrigin, version)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 			defer stop()
 
 			// On-startup scan
-			if cfg.Scan.OnStartup && len(cfg.Sources.Terraform)+len(cfg.Sources.Kubernetes)+len(cfg.Sources.Ansible) > 0 {
+			if cfg.Scan.OnStartup && len(cfg.Sources.Terraform)+len(cfg.Sources.Kubernetes)+len(cfg.Sources.Ansible)+len(cfg.Sources.Compose) > 0 {
 				go func() {
 					logger.Info("running startup scan")
 					results := sc.RunAllConfigured(context.Background())
@@ -830,6 +1025,141 @@ func serveCmd() *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", "", "listen address (default from config or :8080)")
 	cmd.Flags().BoolVar(&readOnly, "read-only", false, "disable scan triggers via API")
 	return cmd
+}
+
+// --- db ---
+
+func dbCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "db",
+		Short: "Database management",
+	}
+	cmd.AddCommand(dbStatsCmd(), dbBackupCmd())
+	return cmd
+}
+
+func dbStatsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stats",
+		Short: "Show database statistics",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			store, cfg := openStore()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
+			ctx := cmd.Context()
+
+			path := cfg.Storage.Path
+			if dbPath != "" {
+				path = dbPath
+			}
+
+			// File size
+			info, err := os.Stat(path)
+			var sizeStr string
+			if err == nil {
+				sizeStr = formatBytes(info.Size())
+			} else {
+				sizeStr = "unknown"
+			}
+
+			nodeCount, _ := store.NodeCount(ctx)
+			edgeCount, _ := store.EdgeCount(ctx)
+			nodesByType, _ := store.NodeCountByType(ctx)
+			edgesByType, _ := store.EdgeCountByType(ctx)
+			scans, _ := store.ListScans(ctx, 100)
+
+			_, _ = fmt.Fprintf(os.Stdout, "Database: %s (%s)\n\n", path, sizeStr)
+			_, _ = fmt.Fprintf(os.Stdout, "Nodes: %d\n", nodeCount)
+			for t, c := range nodesByType {
+				_, _ = fmt.Fprintf(os.Stdout, "  %-20s %d\n", t, c)
+			}
+			_, _ = fmt.Fprintf(os.Stdout, "\nEdges: %d\n", edgeCount)
+			for t, c := range edgesByType {
+				_, _ = fmt.Fprintf(os.Stdout, "  %-20s %d\n", t, c)
+			}
+
+			// Scan summary
+			statusCounts := make(map[string]int)
+			for _, s := range scans {
+				statusCounts[s.Status]++
+			}
+			_, _ = fmt.Fprintf(os.Stdout, "\nScans: %d total\n", len(scans))
+			for status, count := range statusCounts {
+				_, _ = fmt.Fprintf(os.Stdout, "  %-20s %d\n", status, count)
+			}
+
+			return nil
+		},
+	}
+}
+
+func dbBackupCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "backup <output-path>",
+		Short: "Copy database file to a backup location",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
+			srcPath := cfg.Storage.Path
+			if dbPath != "" {
+				srcPath = dbPath
+			}
+			dstPath := args[0]
+
+			// Check if destination exists
+			if _, err := os.Stat(dstPath); err == nil {
+				_, _ = fmt.Fprintf(os.Stdout, "File %s already exists. Overwrite? [y/N]: ", dstPath)
+				reader := bufio.NewReader(os.Stdin)
+				answer, _ := reader.ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					_, _ = fmt.Fprintln(os.Stdout, "Aborted.")
+					return nil
+				}
+			}
+
+			// Create parent directory
+			if err := os.MkdirAll(filepath.Dir(dstPath), 0o750); err != nil {
+				return fmt.Errorf("creating backup directory: %w", err)
+			}
+
+			src, err := os.Open(srcPath) // #nosec G304 -- path from config/flag
+			if err != nil {
+				return fmt.Errorf("opening source database: %w", err)
+			}
+			defer src.Close() //nolint:errcheck // best-effort cleanup
+
+			dst, err := os.Create(dstPath)
+			if err != nil {
+				return fmt.Errorf("creating backup file: %w", err)
+			}
+			defer dst.Close() //nolint:errcheck // best-effort cleanup
+
+			n, err := io.Copy(dst, src)
+			if err != nil {
+				return fmt.Errorf("copying database: %w", err)
+			}
+
+			_, _ = fmt.Fprintf(os.Stdout, "Backed up %s to %s (%s)\n", srcPath, dstPath, formatBytes(n))
+			return nil
+		},
+	}
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // --- version ---

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +33,7 @@ func newTestServer(t *testing.T, apiToken string) (*httptest.Server, *graph.SQLi
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	tracker := certs.NewTracker(store, nil, logger)
 
-	s := New(store, engine, tracker, nil, logger, ":0", false, apiToken, "")
+	s := New(store, engine, tracker, nil, logger, ":0", false, apiToken, "", "test")
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, s)
@@ -499,6 +500,186 @@ func TestExportMermaid(t *testing.T) {
 	}
 	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "aib-graph.mmd") {
 		t.Errorf("Content-Disposition = %q", cd)
+	}
+}
+
+func seedChainData(t *testing.T, store *graph.SQLiteStore) {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now()
+	nodes := []models.Node{
+		{ID: "tf:lb:frontend", Name: "frontend-lb", Type: models.AssetLoadBalancer, Source: "terraform", Provider: "google", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now},
+		{ID: "tf:vm:app", Name: "app-server", Type: models.AssetVM, Source: "terraform", Provider: "google", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now},
+		{ID: "tf:db:primary", Name: "primary-db", Type: models.AssetDatabase, Source: "terraform", Provider: "google", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now},
+	}
+	edges := []models.Edge{
+		{ID: "e1", FromID: "tf:lb:frontend", ToID: "tf:vm:app", Type: models.EdgeDependsOn, Metadata: map[string]string{}},
+		{ID: "e2", FromID: "tf:vm:app", ToID: "tf:db:primary", Type: models.EdgeDependsOn, Metadata: map[string]string{}},
+	}
+	for _, n := range nodes {
+		if err := store.UpsertNode(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, e := range edges {
+		if err := store.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestShortestPath(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedChainData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph/shortest-path?from=tf:lb:frontend&to=tf:db:primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]json.RawMessage
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+
+	var nodes []models.Node
+	_ = json.Unmarshal(result["nodes"], &nodes)
+	if len(nodes) != 3 {
+		t.Errorf("path nodes = %d, want 3", len(nodes))
+	}
+}
+
+func TestShortestPath_MissingParams(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"no params", "/api/v1/graph/shortest-path"},
+		{"only from", "/api/v1/graph/shortest-path?from=a"},
+		{"only to", "/api/v1/graph/shortest-path?to=b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + tt.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400", resp.StatusCode)
+			}
+		})
+	}
+}
+
+func TestDependencyChain(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedChainData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph/dependency-chain/tf:lb:frontend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nodes []models.Node `json:"nodes"`
+		Depth int           `json:"depth"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if len(result.Nodes) != 2 {
+		t.Errorf("deps = %d, want 2 (app + db)", len(result.Nodes))
+	}
+	if result.Depth != 10 {
+		t.Errorf("depth = %d, want 10 (default)", result.Depth)
+	}
+}
+
+func TestDependencyChain_DepthParam(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedChainData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph/dependency-chain/tf:lb:frontend?depth=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nodes []models.Node `json:"nodes"`
+		Depth int           `json:"depth"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if len(result.Nodes) != 1 {
+		t.Errorf("deps = %d, want 1 (only app at depth 1)", len(result.Nodes))
+	}
+	if result.Depth != 1 {
+		t.Errorf("depth = %d, want 1", result.Depth)
+	}
+}
+
+func TestMetrics(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	resp, err := http.Get(ts.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+
+	for _, metric := range []string{
+		"aib_nodes_total 2",
+		"aib_edges_total 1",
+		"aib_certs_expiring_total",
+		"aib_scans_completed_total",
+		"aib_scans_failed_total",
+		"aib_build_info{version=\"test\"} 1",
+	} {
+		if !strings.Contains(text, metric) {
+			t.Errorf("metrics missing %q", metric)
+		}
+	}
+}
+
+func TestMetrics_NoAuth(t *testing.T) {
+	ts, _ := newTestServer(t, "secret-token-123")
+
+	// /metrics is not under /api/ so it should bypass auth
+	resp, err := http.Get(ts.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200 (metrics bypasses auth)", resp.StatusCode)
 	}
 }
 

@@ -27,6 +27,64 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	nodeCount, _ := s.store.NodeCount(ctx)
+	edgeCount, _ := s.store.EdgeCount(ctx)
+	nodesByType, _ := s.store.NodeCountByType(ctx)
+	edgesByType, _ := s.store.EdgeCountByType(ctx)
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	_, _ = fmt.Fprintf(w, "# HELP aib_nodes_total Total number of nodes in the graph.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_nodes_total gauge\n")
+	_, _ = fmt.Fprintf(w, "aib_nodes_total %d\n", nodeCount)
+
+	_, _ = fmt.Fprintf(w, "# HELP aib_edges_total Total number of edges in the graph.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_edges_total gauge\n")
+	_, _ = fmt.Fprintf(w, "aib_edges_total %d\n", edgeCount)
+
+	_, _ = fmt.Fprintf(w, "# HELP aib_nodes_by_type Number of nodes by asset type.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_nodes_by_type gauge\n")
+	for t, c := range nodesByType {
+		_, _ = fmt.Fprintf(w, "aib_nodes_by_type{type=%q} %d\n", t, c)
+	}
+
+	_, _ = fmt.Fprintf(w, "# HELP aib_edges_by_type Number of edges by relationship type.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_edges_by_type gauge\n")
+	for t, c := range edgesByType {
+		_, _ = fmt.Fprintf(w, "aib_edges_by_type{type=%q} %d\n", t, c)
+	}
+
+	expiringCerts, _ := s.tracker.ExpiringCerts(ctx, 30)
+	_, _ = fmt.Fprintf(w, "# HELP aib_certs_expiring_total Certificates expiring within 30 days.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_certs_expiring_total gauge\n")
+	_, _ = fmt.Fprintf(w, "aib_certs_expiring_total %d\n", len(expiringCerts))
+
+	scans, _ := s.store.ListScans(ctx, 1000)
+	completed, failed := 0, 0
+	for _, sc := range scans {
+		switch sc.Status {
+		case "completed":
+			completed++
+		case "failed":
+			failed++
+		}
+	}
+	_, _ = fmt.Fprintf(w, "# HELP aib_scans_completed_total Total completed scans.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_scans_completed_total gauge\n")
+	_, _ = fmt.Fprintf(w, "aib_scans_completed_total %d\n", completed)
+
+	_, _ = fmt.Fprintf(w, "# HELP aib_scans_failed_total Total failed scans.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_scans_failed_total gauge\n")
+	_, _ = fmt.Fprintf(w, "aib_scans_failed_total %d\n", failed)
+
+	_, _ = fmt.Fprintf(w, "# HELP aib_build_info AIB build information.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE aib_build_info gauge\n")
+	_, _ = fmt.Fprintf(w, "aib_build_info{version=%q} 1\n", s.version)
+}
+
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	nodes, err := s.store.ListNodes(ctx, graph.NodeFilter{})
@@ -122,6 +180,54 @@ func (s *Server) handleImpact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleShortestPath(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	fromID := r.URL.Query().Get("from")
+	toID := r.URL.Query().Get("to")
+	if fromID == "" || toID == "" {
+		writeError(w, http.StatusBadRequest, "both 'from' and 'to' query parameters are required")
+		return
+	}
+
+	nodes, edges, err := s.engine.ShortestPath(ctx, fromID, toID)
+	if err != nil {
+		s.logger.Error("shortest path", "from", fromID, "to", toID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nodes": nodes,
+		"edges": edges,
+	})
+}
+
+func (s *Server) handleDependencyChain(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	nodeID := r.PathValue("nodeId")
+	if nodeID == "" {
+		writeError(w, http.StatusBadRequest, "node id required")
+		return
+	}
+
+	depth := 10
+	if d := r.URL.Query().Get("depth"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed >= 1 && parsed <= 50 {
+			depth = parsed
+		}
+	}
+
+	nodes, err := s.engine.DependencyChain(ctx, nodeID, depth)
+	if err != nil {
+		s.logger.Error("dependency chain", "nodeId", nodeID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nodes": nodes,
+		"depth": depth,
+	})
 }
 
 func (s *Server) handleCerts(w http.ResponseWriter, r *http.Request) {
@@ -248,11 +354,11 @@ func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
 
 	validSources := map[string]bool{
 		"terraform": true, "kubernetes": true,
-		"kubernetes-live": true, "ansible": true, "all": true,
+		"kubernetes-live": true, "ansible": true, "compose": true, "all": true,
 	}
 	if !validSources[req.Source] {
 		writeError(w, http.StatusBadRequest,
-			"source must be one of: terraform, kubernetes, kubernetes-live, ansible, all")
+			"source must be one of: terraform, kubernetes, kubernetes-live, ansible, compose, all")
 		return
 	}
 

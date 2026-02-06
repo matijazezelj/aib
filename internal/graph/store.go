@@ -60,9 +60,10 @@ type Store interface {
 
 // NodeFilter specifies criteria for listing nodes.
 type NodeFilter struct {
-	Type     string
-	Source   string
-	Provider string
+	Type      string
+	Source    string
+	Provider  string
+	StaleDays int // if > 0, filter nodes with last_seen older than N days ago
 }
 
 // EdgeFilter specifies criteria for listing edges.

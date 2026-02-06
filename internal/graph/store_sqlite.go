@@ -192,6 +192,11 @@ func (s *SQLiteStore) ListNodes(ctx context.Context, filter NodeFilter) ([]model
 		query += ` AND provider = ?`
 		args = append(args, filter.Provider)
 	}
+	if filter.StaleDays > 0 {
+		threshold := time.Now().Add(-time.Duration(filter.StaleDays) * 24 * time.Hour).Format(time.RFC3339)
+		query += ` AND last_seen < ?`
+		args = append(args, threshold)
+	}
 
 	query += ` ORDER BY type, name`
 

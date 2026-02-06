@@ -30,6 +30,7 @@ type Server struct {
 	readOnly   bool
 	apiToken   string
 	corsOrigin string
+	version    string
 	srv        *http.Server
 
 	// rate limiter state
@@ -42,7 +43,7 @@ type ipLimiter struct {
 }
 
 // New creates a new Server.
-func New(store *graph.SQLiteStore, engine graph.GraphEngine, tracker *certs.Tracker, sc *scanner.Scanner, logger *slog.Logger, listen string, readOnly bool, apiToken string, corsOrigin string) *Server {
+func New(store *graph.SQLiteStore, engine graph.GraphEngine, tracker *certs.Tracker, sc *scanner.Scanner, logger *slog.Logger, listen string, readOnly bool, apiToken string, corsOrigin string, version string) *Server {
 	return &Server{
 		store:      store,
 		engine:     engine,
@@ -53,6 +54,7 @@ func New(store *graph.SQLiteStore, engine graph.GraphEngine, tracker *certs.Trac
 		readOnly:   readOnly,
 		apiToken:   apiToken,
 		corsOrigin: corsOrigin,
+		version:    version,
 	}
 }
 

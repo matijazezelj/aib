@@ -12,6 +12,7 @@ import (
 	"github.com/matijazezelj/aib/internal/graph"
 	"github.com/matijazezelj/aib/internal/parser"
 	"github.com/matijazezelj/aib/internal/parser/ansible"
+	"github.com/matijazezelj/aib/internal/parser/compose"
 	"github.com/matijazezelj/aib/internal/parser/kubernetes"
 	"github.com/matijazezelj/aib/internal/parser/terraform"
 )
@@ -231,6 +232,17 @@ func (s *Scanner) RunAllConfigured(ctx context.Context) []ScanResult {
 		results = append(results, r)
 	}
 
+	for _, src := range s.cfg.Sources.Compose {
+		if src.Path == "" {
+			continue
+		}
+		r := s.RunSync(ctx, ScanRequest{
+			Source: "compose",
+			Paths:  []string{src.Path},
+		})
+		results = append(results, r)
+	}
+
 	return results
 }
 
@@ -252,6 +264,8 @@ func (s *Scanner) executeScan(ctx context.Context, req ScanRequest) (*parser.Par
 		return s.scanKubernetesLive(ctx, req)
 	case "ansible":
 		return s.scanAnsible(ctx, req)
+	case "compose":
+		return s.scanCompose(ctx, req)
 	case "all":
 		// "all" is handled specially by RunAsync — it runs RunAllConfigured.
 		// If it reaches here via RunSync, just run all configured sources.
@@ -301,6 +315,26 @@ func (s *Scanner) scanKubernetes(ctx context.Context, req ScanRequest) (*parser.
 
 func (s *Scanner) scanKubernetesLive(ctx context.Context, req ScanRequest) (*parser.ParseResult, error) {
 	return kubernetes.FetchLive(ctx, req.Kubeconfig, req.Context, req.Namespaces)
+}
+
+func (s *Scanner) scanCompose(ctx context.Context, req ScanRequest) (*parser.ParseResult, error) {
+	p := compose.NewComposeParser()
+	merged := &parser.ParseResult{}
+
+	for _, path := range req.Paths {
+		if !p.Supported(path) {
+			return nil, fmt.Errorf("path %q is not a supported Docker Compose source", path)
+		}
+		result, err := p.Parse(ctx, path)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+		merged.Nodes = append(merged.Nodes, result.Nodes...)
+		merged.Edges = append(merged.Edges, result.Edges...)
+		merged.Warnings = append(merged.Warnings, result.Warnings...)
+	}
+
+	return merged, nil
 }
 
 func (s *Scanner) scanAnsible(ctx context.Context, req ScanRequest) (*parser.ParseResult, error) {
