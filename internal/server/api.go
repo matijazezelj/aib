@@ -2,8 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/matijazezelj/aib/internal/graph"
 	"github.com/matijazezelj/aib/internal/scanner"
@@ -191,6 +195,45 @@ type scanTriggerRequest struct {
 	Playbooks  string   `json:"playbooks,omitempty"`
 }
 
+var nsRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$`)
+
+// validatePath checks a single file path for traversal and requires absolute paths.
+func validatePath(p string) error {
+	cleaned := filepath.Clean(p)
+	if strings.Contains(cleaned, "..") {
+		return fmt.Errorf("path %q contains directory traversal", p)
+	}
+	if !filepath.IsAbs(cleaned) {
+		return fmt.Errorf("path %q must be absolute", p)
+	}
+	return nil
+}
+
+// validateScanRequest checks paths and namespaces in the request.
+func validateScanRequest(req scanTriggerRequest) error {
+	for _, p := range req.Paths {
+		if err := validatePath(p); err != nil {
+			return err
+		}
+	}
+	if req.ValuesFile != "" {
+		if err := validatePath(req.ValuesFile); err != nil {
+			return fmt.Errorf("values_file: %w", err)
+		}
+	}
+	if req.Playbooks != "" {
+		if err := validatePath(req.Playbooks); err != nil {
+			return fmt.Errorf("playbooks: %w", err)
+		}
+	}
+	for _, ns := range req.Namespaces {
+		if !nsRegexp.MatchString(ns) {
+			return fmt.Errorf("invalid namespace %q (must match [a-z0-9-]+)", ns)
+		}
+	}
+	return nil
+}
+
 func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
 	if s.scanner == nil {
 		writeError(w, http.StatusServiceUnavailable, "scanner not configured")
@@ -230,6 +273,11 @@ func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
 
 	if req.Source != "kubernetes-live" && len(req.Paths) == 0 {
 		writeError(w, http.StatusBadRequest, "paths required for file-based scans")
+		return
+	}
+
+	if err := validateScanRequest(req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

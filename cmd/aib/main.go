@@ -764,7 +764,7 @@ func serveCmd() *cobra.Command {
 
 			tracker := certs.NewTracker(store, cfg.Certs.AlertThresholds, logger)
 			sc := scanner.New(store, cfg, logger)
-			srv := server.New(store, engine, tracker, sc, logger, listen, readOnly || cfg.Server.ReadOnly, cfg.Server.APIToken)
+			srv := server.New(store, engine, tracker, sc, logger, listen, readOnly || cfg.Server.ReadOnly, cfg.Server.APIToken, cfg.Server.CORSOrigin)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 			defer stop()
@@ -783,6 +783,24 @@ func serveCmd() *cobra.Command {
 						}
 					}
 				}()
+			}
+
+			// Scheduled cert probing
+			if cfg.Certs.ProbeEnabled && cfg.Certs.ProbeInterval != "" {
+				var alerters []alert.Alerter
+				if cfg.Alerts.Stdout.Enabled {
+					alerters = append(alerters, alert.NewStdoutAlerter())
+				}
+				if cfg.Alerts.Webhook.Enabled && cfg.Alerts.Webhook.URL != "" {
+					alerters = append(alerters, alert.NewWebhookAlerter(cfg.Alerts.Webhook.URL, cfg.Alerts.Webhook.Headers))
+				}
+				certSched, err := certs.NewCertScheduler(tracker, store, alert.NewMulti(alerters...), cfg.Certs.ProbeInterval, logger)
+				if err != nil {
+					logger.Error("invalid cert probe interval", "error", err)
+				} else {
+					certSched.Start(ctx)
+					defer certSched.Stop()
+				}
 			}
 
 			// Scheduled scans

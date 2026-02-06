@@ -316,6 +316,36 @@ Re-probe all known endpoints discovered from the graph:
 aib certs check
 ```
 
+#### Automatic Certificate Probing
+
+When running `aib serve`, certificates are probed automatically on a schedule. The interval is configured via `certs.probe_interval` (default: `6h`):
+
+```yaml
+certs:
+  probe_enabled: true
+  probe_interval: "6h"    # Go duration: 6h, 30m, 1h30m
+  alert_thresholds: [90, 60, 30, 14, 7, 1]
+```
+
+The scheduler discovers TLS endpoints from the graph (ingresses, load balancers, DNS records), probes them, and sends alerts via configured backends (webhook, stdout) when certificates are expiring.
+
+### Live Kubernetes Cluster Scanning
+
+Scan a running Kubernetes cluster directly via `kubectl`:
+
+```bash
+# Scan all non-system namespaces using default kubeconfig
+aib scan k8s --live
+
+# Specify kubeconfig and context
+aib scan k8s --live --kubeconfig=~/.kube/config --context=prod-cluster
+
+# Scan specific namespaces only
+aib scan k8s --live --namespace=default --namespace=app
+```
+
+This requires `kubectl` to be installed and configured with access to the target cluster.
+
 ### Web UI and API
 
 Start the embedded web server:
@@ -325,6 +355,34 @@ aib serve                        # default :8080
 aib serve --listen=:9090         # custom port
 aib serve --read-only            # disable scan triggers via API
 ```
+
+The web UI provides an interactive graph visualization with:
+- Distinct node shapes per asset category (rectangles for compute, diamonds for data, hexagons for networking, etc.)
+- Search, filter by type/source, and blast radius highlighting
+- A "Scan Now" button to trigger scans from the browser
+
+#### API Authentication
+
+Protect API endpoints with bearer token authentication:
+
+```yaml
+server:
+  api_token: "${AIB_API_TOKEN}"
+```
+
+Or via environment variable:
+
+```bash
+AIB_SERVER_API_TOKEN=your-secret-token aib serve
+```
+
+Authenticated requests require the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer your-secret-token" http://localhost:8080/api/v1/stats
+```
+
+Authentication applies to `/api/*` routes only. The web UI, static assets, and `/healthz` are always accessible.
 
 #### REST API Endpoints
 
@@ -340,7 +398,55 @@ aib serve --read-only            # disable scan triggers via API
 | `GET` | `/api/v1/certs/expiring` | Expiring certs (`?days=30`) |
 | `GET` | `/api/v1/stats` | Summary statistics |
 | `GET` | `/api/v1/scans` | Scan history |
+| `GET` | `/api/v1/scan/status` | Check if a scan is running |
 | `POST` | `/api/v1/scan` | Trigger a scan |
+
+#### Triggering Scans via API
+
+`POST /api/v1/scan` with a JSON body:
+
+```json
+{
+  "source": "all"
+}
+```
+
+Valid sources: `terraform`, `kubernetes`, `kubernetes-live`, `ansible`, `all`. For file-based sources, include `paths`:
+
+```json
+{
+  "source": "terraform",
+  "paths": ["/absolute/path/to/terraform"]
+}
+```
+
+Returns `202 Accepted` with the scan ID:
+
+```json
+{
+  "status": "scan triggered",
+  "scan_id": 5
+}
+```
+
+Check scan progress with `GET /api/v1/scan/status`:
+
+```json
+{
+  "running": true
+}
+```
+
+#### Security
+
+The server includes the following security features:
+
+- **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`, `Referrer-Policy` on all responses
+- **Rate limiting**: API routes are limited to 10 requests/sec (burst 20) per client IP. Returns `429 Too Many Requests` when exceeded
+- **Request body limits**: POST/PUT/PATCH bodies are capped at 1 MB
+- **Path validation**: The scan trigger API rejects paths containing `..` (directory traversal) and requires absolute paths
+- **CORS**: Disabled by default. Set `server.cors_origin` to enable cross-origin API access
+- **Authentication**: Optional bearer token auth on all `/api/*` routes (see above)
 
 ## Configuration
 
@@ -357,7 +463,7 @@ storage:
 
 certs:
   probe_enabled: true
-  probe_interval: "6h"
+  probe_interval: "6h"                 # Go duration format
   alert_thresholds: [90, 60, 30, 14, 7, 1]
 
 alerts:
@@ -372,7 +478,15 @@ alerts:
 server:
   listen: ":8080"
   read_only: false
+  api_token: "${AIB_API_TOKEN}"        # bearer token for /api/* routes
+  cors_origin: ""                      # CORS origin ("*" for any)
+
+scan:
+  schedule: "4h"                       # periodic scan interval (Go duration)
+  on_startup: true                     # scan all configured sources on startup
 ```
+
+Sensitive fields (`api_token`, `password`, webhook `url` and `headers`) support `${ENV_VAR}` expansion.
 
 All settings can also be set via environment variables with the `AIB_` prefix:
 

@@ -13,13 +13,18 @@ sources:
       state_file: "terraform.tfstate"
   kubernetes:
     - path: "/path/to/k8s/manifests"
+    # Live cluster scanning:
+    # - live: true
+    #   kubeconfig: "~/.kube/config"
+    #   context: "prod-cluster"
+    #   namespaces: ["default", "app"]
   ansible:
     - inventory: "/path/to/ansible/inventory"
       playbooks: "/path/to/ansible/playbooks"
 
 certs:
   probe_enabled: true
-  probe_interval: "6h"
+  probe_interval: "6h"                 # Go duration format: 6h, 30m, 1h30m
   alert_thresholds:
     - 90
     - 60
@@ -40,7 +45,9 @@ alerts:
 server:
   listen: ":8080"
   read_only: false
+  api_token: "${AIB_API_TOKEN}"        # Set to enable bearer token auth on /api/* routes
+  cors_origin: ""                      # Set to "*" or specific origin to enable CORS
 
 scan:
-  schedule: "0 */4 * * *"
+  schedule: "4h"                       # Go duration format: 4h, 30m, 1h30m (empty = disabled)
   on_startup: true

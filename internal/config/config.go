@@ -77,9 +77,10 @@ type StdoutConfig struct {
 }
 
 type ServerConfig struct {
-	Listen   string `mapstructure:"listen"`
-	ReadOnly bool   `mapstructure:"read_only"`
-	APIToken string `mapstructure:"api_token"`
+	Listen     string `mapstructure:"listen"`
+	ReadOnly   bool   `mapstructure:"read_only"`
+	APIToken   string `mapstructure:"api_token"`
+	CORSOrigin string `mapstructure:"cors_origin"`
 }
 
 type ScanConfig struct {

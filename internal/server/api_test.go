@@ -31,7 +31,7 @@ func newTestServer(t *testing.T, apiToken string) (*httptest.Server, *graph.SQLi
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	tracker := certs.NewTracker(store, nil, logger)
 
-	s := New(store, engine, tracker, nil, logger, ":0", false, apiToken)
+	s := New(store, engine, tracker, nil, logger, ":0", false, apiToken, "")
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, s)

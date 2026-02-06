@@ -50,6 +50,9 @@ func NewMulti(alerters ...Alerter) *Multi {
 	return &Multi{alerters: alerters}
 }
 
+// Name returns "multi".
+func (m *Multi) Name() string { return "multi" }
+
 // Send dispatches the event to all configured alerters.
 func (m *Multi) Send(ctx context.Context, event Event) error {
 	var lastErr error
