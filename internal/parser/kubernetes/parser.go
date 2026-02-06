@@ -82,7 +82,7 @@ func (p *K8sParser) Parse(ctx context.Context, path string) (*parser.ParseResult
 	now := time.Now()
 
 	for _, f := range files {
-		data, err := os.ReadFile(f)
+		data, err := os.ReadFile(f) // #nosec G304 -- paths validated by SafeResolvePath
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("reading %s: %v", f, err))
 			continue

@@ -92,7 +92,7 @@ func (p *StateParser) ParseMulti(ctx context.Context, paths []string) (*parser.P
 	globalRefMap := make(map[string]string)
 	stateData := make(map[string][]byte)
 	for _, sf := range stateFiles {
-		data, err := os.ReadFile(sf)
+		data, err := os.ReadFile(sf) // #nosec G304 -- paths validated by SafeResolvePath
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("reading %s: %v", sf, err))
 			continue
@@ -150,7 +150,7 @@ type tfInstance struct {
 }
 
 func parseStateFile(path string) (*parser.ParseResult, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by SafeResolvePath
 	if err != nil {
 		return nil, fmt.Errorf("reading file: %w", err)
 	}

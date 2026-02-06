@@ -76,7 +76,7 @@ func listNamespaces(ctx context.Context, kubeconfig, kubeCtx string) ([]string, 
 	args := buildKubectlArgs(kubeconfig, kubeCtx)
 	args = append(args, "get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}")
 
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd := exec.CommandContext(ctx, "kubectl", args...) // #nosec G204 -- args are constructed internally
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -106,7 +106,7 @@ func kubectlGet(ctx context.Context, kubeconfig, kubeCtx, namespace, resourceTyp
 	args := buildKubectlArgs(kubeconfig, kubeCtx)
 	args = append(args, "get", resourceTypes, "-n", namespace, "-o", "yaml")
 
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd := exec.CommandContext(ctx, "kubectl", args...) // #nosec G204 -- args are constructed internally
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

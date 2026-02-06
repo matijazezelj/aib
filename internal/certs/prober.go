@@ -31,7 +31,7 @@ func Probe(hostPort string, timeout time.Duration) (*ProbeResult, error) {
 
 	dialer := &net.Dialer{Timeout: timeout}
 	conn, err := tls.DialWithDialer(dialer, "tcp", hostPort, &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, // #nosec G402 -- intentional: probing certs on arbitrary endpoints
 	})
 	if err != nil {
 		return &ProbeResult{

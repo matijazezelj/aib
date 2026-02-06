@@ -62,7 +62,7 @@ func parsePlaybooksDir(ctx context.Context, dir string, hostMap map[string]hostE
 }
 
 func parsePlaybookFile(ctx context.Context, path string, hostMap map[string]hostEntry, now time.Time) (*parser.ParseResult, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by SafeResolvePath
 	if err != nil {
 		return nil, err
 	}

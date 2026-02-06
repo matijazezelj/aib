@@ -25,7 +25,7 @@ func pullStateBytes(ctx context.Context, projectDir, workspace string) ([]byte, 
 	}
 
 	if workspace != "" {
-		wsCmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "workspace", "select", workspace)
+		wsCmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "workspace", "select", workspace) // #nosec G204 -- args are constructed internally
 		var wsErr bytes.Buffer
 		wsCmd.Stderr = &wsErr
 		if err := wsCmd.Run(); err != nil {
@@ -33,7 +33,7 @@ func pullStateBytes(ctx context.Context, projectDir, workspace string) ([]byte, 
 		}
 	}
 
-	pullCmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "state", "pull")
+	pullCmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "state", "pull") // #nosec G204 -- args are constructed internally
 	var stdout, stderr bytes.Buffer
 	pullCmd.Stdout = &stdout
 	pullCmd.Stderr = &stderr
@@ -138,7 +138,7 @@ func ListWorkspaces(ctx context.Context, projectDir string) ([]string, error) {
 		return nil, fmt.Errorf("terraform CLI not found in PATH: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "workspace", "list")
+	cmd := exec.CommandContext(ctx, "terraform", fmt.Sprintf("-chdir=%s", projectDir), "workspace", "list") // #nosec G204 -- args are constructed internally
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

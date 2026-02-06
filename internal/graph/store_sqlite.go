@@ -63,7 +63,7 @@ type SQLiteStore struct {
 
 // NewSQLiteStore creates a new SQLite-backed store.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		return nil, fmt.Errorf("creating db directory: %w", err)
 	}
 

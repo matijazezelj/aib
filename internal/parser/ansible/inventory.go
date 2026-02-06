@@ -25,7 +25,7 @@ func parseInventoryFile(path string) ([]hostEntry, []string, error) {
 		return parseYAMLInventory(path)
 	}
 	// For .ini or extensionless files, peek at content to detect YAML
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by SafeResolvePath
 	if err != nil {
 		return nil, nil, err
 	}
@@ -41,7 +41,7 @@ func parseInventoryFile(path string) ([]hostEntry, []string, error) {
 // parseINIInventory parses a standard Ansible INI inventory file.
 // Handles [group], host entries with inline vars, [group:vars], [group:children].
 func parseINIInventory(path string) ([]hostEntry, []string, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- paths validated by SafeResolvePath
 	if err != nil {
 		return nil, nil, err
 	}
@@ -183,7 +183,7 @@ type yamlGroup struct {
 }
 
 func parseYAMLInventory(path string) ([]hostEntry, []string, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by SafeResolvePath
 	if err != nil {
 		return nil, nil, err
 	}

@@ -21,7 +21,7 @@ func RenderHelm(ctx context.Context, chartPath string, valuesFile string) (*pars
 		args = append(args, "-f", valuesFile)
 	}
 
-	cmd := exec.CommandContext(ctx, "helm", args...)
+	cmd := exec.CommandContext(ctx, "helm", args...) // #nosec G204 -- args are constructed internally
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -35,7 +35,7 @@ func NewMemgraphEngine(uri, username, password string, fallback *LocalEngine, lo
 	defer cancel()
 
 	if err := driver.VerifyConnectivity(ctx); err != nil {
-		driver.Close(context.Background())
+		_ = driver.Close(context.Background())
 		return nil, fmt.Errorf("memgraph connectivity check failed: %w", err)
 	}
 
