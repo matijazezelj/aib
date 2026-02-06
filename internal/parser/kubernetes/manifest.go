@@ -178,6 +178,12 @@ type k8sVolConfigMap struct {
 	Name string `yaml:"name"`
 }
 
+// k8sList wraps a Kubernetes List response (from kubectl get -o yaml).
+type k8sList struct {
+	Kind  string        `yaml:"kind"`
+	Items []k8sResource `yaml:"items"`
+}
+
 // parseManifests parses multi-document YAML into nodes and edges.
 func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.ParseResult, error) {
 	result := &parser.ParseResult{}
@@ -199,6 +205,15 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 		}
 		if res.Kind == "" {
 			continue
+		}
+		// Handle kubectl "List" wrapper (e.g. from kubectl get -o yaml)
+		if res.Kind == "List" || res.Kind == "DeploymentList" || res.Kind == "ServiceList" ||
+			strings.HasSuffix(res.Kind, "List") {
+			var list k8sList
+			if err := yaml.Unmarshal(doc, &list); err == nil {
+				resources = append(resources, list.Items...)
+				continue
+			}
 		}
 		resources = append(resources, res)
 	}

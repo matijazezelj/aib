@@ -1,20 +1,29 @@
 const API = '/api/v1';
 
 const TYPE_COLORS = {
-    vm: '#AED6F1', node: '#AED6F1',
-    pod: '#A3E4D7', container: '#A3E4D7',
-    service: '#F9E79F',
-    ingress: '#F5CBA7', load_balancer: '#F5CBA7',
-    database: '#D7BDE2',
-    certificate: '#F1948A',
-    secret: '#E74C3C',
-    network: '#85C1E9', subnet: '#85C1E9',
-    dns_record: '#82E0AA',
-    firewall_rule: '#F0B27A',
-    bucket: '#AED6F1',
-    ip_address: '#85C1E9',
-    namespace: '#D5D8DC',
-    queue: '#BB8FCE', pubsub: '#BB8FCE',
+    vm: '#6e9ecf', node: '#6e9ecf', instance_group: '#6e9ecf',
+    pod: '#5b9e8f', container: '#5b9e8f',
+    service: '#b8a965', ingress: '#b8a965', load_balancer: '#b8a965', cdn: '#b8a965', backend_service: '#b8a965',
+    database: '#8f7bb5', bucket: '#8f7bb5', disk: '#8f7bb5', queue: '#8f7bb5', pubsub: '#8f7bb5',
+    network: '#5589a6', subnet: '#5589a6', ip_address: '#5589a6',
+    dns_record: '#6aab8e', firewall_rule: '#c08a5a', health_check: '#c08a5a',
+    certificate: '#b5706b', secret: '#b5706b', kms_key: '#b5706b',
+    iam_binding: '#9478a7', iam_policy: '#9478a7', iam_group: '#9478a7', service_account: '#9478a7',
+    monitor: '#6aab8e',
+    namespace: '#7c8894',
+};
+
+const TYPE_SHAPES = {
+    vm: 'rectangle', node: 'rectangle', instance_group: 'rectangle',
+    pod: 'round-rectangle', container: 'round-rectangle',
+    service: 'ellipse', ingress: 'ellipse', load_balancer: 'ellipse', backend_service: 'ellipse',
+    network: 'hexagon', subnet: 'hexagon', ip_address: 'hexagon', cdn: 'hexagon',
+    dns_record: 'triangle', firewall_rule: 'triangle', health_check: 'triangle',
+    database: 'diamond', bucket: 'diamond', disk: 'diamond', queue: 'diamond', pubsub: 'diamond',
+    certificate: 'octagon', secret: 'octagon', kms_key: 'octagon',
+    iam_binding: 'pentagon', iam_policy: 'pentagon', iam_group: 'pentagon', service_account: 'pentagon',
+    monitor: 'star',
+    namespace: 'barrel',
 };
 
 let cy;
@@ -71,12 +80,13 @@ async function init() {
                 selector: 'node',
                 style: {
                     'label': 'data(label)',
+                    'shape': el => TYPE_SHAPES[el.data('type')] || 'ellipse',
                     'background-color': el => TYPE_COLORS[el.data('type')] || '#D5D8DC',
                     'color': '#c9d1d9',
                     'font-size': '10px',
                     'text-valign': 'bottom',
                     'text-margin-y': 4,
-                    'width': 30, 'height': 30,
+                    'width': 34, 'height': 34,
                     'border-width': 2,
                     'border-color': '#30363d',
                 },
@@ -107,7 +117,17 @@ async function init() {
                 style: { 'opacity': 0.2 },
             },
         ],
-        layout: { name: 'cose', animate: false, nodeRepulsion: () => 8000, idealEdgeLength: () => 120 },
+        layout: {
+            name: 'cose',
+            animate: false,
+            nodeRepulsion: () => 16000,
+            idealEdgeLength: () => 140,
+            nodeOverlap: 20,
+            padding: 40,
+            componentSpacing: 60,
+            nestingFactor: 1.2,
+            gravity: 0.3,
+        },
     });
 
     // Node click → show detail + impact
@@ -155,6 +175,65 @@ async function init() {
         document.getElementById('detail-panel').classList.add('hidden');
         cy.nodes().removeClass('highlighted dimmed');
     });
+
+    // Legend toggle
+    document.getElementById('btn-legend').addEventListener('click', () => {
+        document.getElementById('legend').classList.toggle('hidden');
+    });
+
+    // Scan button
+    document.getElementById('btn-scan').addEventListener('click', triggerScan);
+    checkScanRunning();
+}
+
+async function triggerScan() {
+    const btn = document.getElementById('btn-scan');
+    const status = document.getElementById('scan-status');
+    btn.disabled = true;
+    status.className = 'scan-spinner';
+    status.textContent = 'Scanning...';
+    try {
+        await fetch(`${API}/scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'all' }) });
+        pollScanStatus();
+    } catch {
+        status.className = '';
+        status.textContent = 'Scan failed';
+        btn.disabled = false;
+    }
+}
+
+function pollScanStatus() {
+    const btn = document.getElementById('btn-scan');
+    const status = document.getElementById('scan-status');
+    const poll = setInterval(async () => {
+        try {
+            const data = await fetchJSON(`${API}/scan/status`);
+            if (!data.running) {
+                clearInterval(poll);
+                status.className = '';
+                status.textContent = 'Scan complete';
+                btn.disabled = false;
+                location.reload();
+            }
+        } catch {
+            clearInterval(poll);
+            status.className = '';
+            status.textContent = '';
+            btn.disabled = false;
+        }
+    }, 2000);
+}
+
+async function checkScanRunning() {
+    try {
+        const data = await fetchJSON(`${API}/scan/status`);
+        if (data.running) {
+            document.getElementById('btn-scan').disabled = true;
+            document.getElementById('scan-status').className = 'scan-spinner';
+            document.getElementById('scan-status').textContent = 'Scanning...';
+            pollScanStatus();
+        }
+    } catch { /* ignore */ }
 }
 
 async function showDetail(nodeId, graphData) {

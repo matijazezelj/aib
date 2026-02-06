@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/matijazezelj/aib/internal/graph"
+	"github.com/matijazezelj/aib/internal/scanner"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -178,7 +179,85 @@ func (s *Server) handleScans(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, scans)
 }
 
+// scanTriggerRequest is the JSON body for POST /api/v1/scan.
+type scanTriggerRequest struct {
+	Source     string   `json:"source"`
+	Paths      []string `json:"paths,omitempty"`
+	Remote     bool     `json:"remote,omitempty"`
+	Workspace  string   `json:"workspace,omitempty"`
+	Helm       bool     `json:"helm,omitempty"`
+	ValuesFile string   `json:"values_file,omitempty"`
+	Namespaces []string `json:"namespaces,omitempty"`
+	Playbooks  string   `json:"playbooks,omitempty"`
+}
+
 func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
-	// Placeholder for scan triggering via API
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scan triggered"})
+	if s.scanner == nil {
+		writeError(w, http.StatusServiceUnavailable, "scanner not configured")
+		return
+	}
+
+	var req scanTriggerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	validSources := map[string]bool{
+		"terraform": true, "kubernetes": true,
+		"kubernetes-live": true, "ansible": true, "all": true,
+	}
+	if !validSources[req.Source] {
+		writeError(w, http.StatusBadRequest,
+			"source must be one of: terraform, kubernetes, kubernetes-live, ansible, all")
+		return
+	}
+
+	if req.Source == "all" {
+		scanReq := scanner.ScanRequest{Source: "all"}
+		scanID, err := s.scanner.RunAsync(r.Context(), scanReq)
+		if err != nil {
+			s.logger.Error("triggering scan", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to start scan")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"status":  "scan triggered",
+			"scan_id": scanID,
+		})
+		return
+	}
+
+	if req.Source != "kubernetes-live" && len(req.Paths) == 0 {
+		writeError(w, http.StatusBadRequest, "paths required for file-based scans")
+		return
+	}
+
+	scanReq := scanner.ScanRequest{
+		Source:     req.Source,
+		Paths:      req.Paths,
+		Remote:     req.Remote,
+		Workspace:  req.Workspace,
+		Helm:       req.Helm,
+		ValuesFile: req.ValuesFile,
+		Namespaces: req.Namespaces,
+		Playbooks:  req.Playbooks,
+	}
+
+	scanID, err := s.scanner.RunAsync(r.Context(), scanReq)
+	if err != nil {
+		s.logger.Error("triggering scan", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to start scan")
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"status":  "scan triggered",
+		"scan_id": scanID,
+	})
+}
+
+func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request) {
+	running := s.scanner != nil && s.scanner.IsRunning()
+	writeJSON(w, http.StatusOK, map[string]any{"running": running})
 }

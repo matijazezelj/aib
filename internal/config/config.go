@@ -41,11 +41,13 @@ type TerraformSource struct {
 }
 
 type KubernetesSource struct {
-	Path       string `mapstructure:"path"`
-	HelmChart  string `mapstructure:"helm_chart"`
-	ValuesFile string `mapstructure:"values_file"`
-	Kubeconfig string `mapstructure:"kubeconfig"`
-	Context    string `mapstructure:"context"`
+	Path       string   `mapstructure:"path"`
+	HelmChart  string   `mapstructure:"helm_chart"`
+	ValuesFile string   `mapstructure:"values_file"`
+	Kubeconfig string   `mapstructure:"kubeconfig"`
+	Context    string   `mapstructure:"context"`
+	Live       bool     `mapstructure:"live"`
+	Namespaces []string `mapstructure:"namespaces"`
 }
 
 type AnsibleSource struct {

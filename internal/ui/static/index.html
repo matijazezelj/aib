@@ -23,6 +23,22 @@
             <option value="">All Sources</option>
         </select>
         <button id="btn-reset">Reset View</button>
+        <button id="btn-scan">Scan Now</button>
+        <span id="scan-status"></span>
+        <button id="btn-legend">Legend</button>
+    </div>
+
+    <div id="legend" class="hidden">
+        <span class="legend-item"><svg width="14" height="14"><rect x="1" y="1" width="12" height="12" rx="1" fill="#6e9ecf" stroke="#30363d"/></svg> Compute</span>
+        <span class="legend-item"><svg width="14" height="14"><rect x="1" y="1" width="12" height="12" rx="4" fill="#5b9e8f" stroke="#30363d"/></svg> Container</span>
+        <span class="legend-item"><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="#b8a965" stroke="#30363d"/></svg> Service</span>
+        <span class="legend-item"><svg width="14" height="14"><polygon points="7,1 13,7 7,13 1,7" fill="#5589a6" stroke="#30363d"/></svg> Network</span>
+        <span class="legend-item"><svg width="14" height="14"><polygon points="7,1 13,12 1,12" fill="#c08a5a" stroke="#30363d"/></svg> DNS/FW</span>
+        <span class="legend-item"><svg width="14" height="14"><polygon points="7,1 13,7 7,13 1,7" fill="#8f7bb5" stroke="#30363d"/></svg> Data</span>
+        <span class="legend-item"><svg width="14" height="14"><polygon points="4,1 10,1 13,5 13,9 10,13 4,13 1,9 1,5" fill="#b5706b" stroke="#30363d"/></svg> Security</span>
+        <span class="legend-item"><svg width="14" height="14"><polygon points="7,1 13,5 11,12 3,12 1,5" fill="#9478a7" stroke="#30363d"/></svg> IAM</span>
+        <span class="legend-item"><svg width="14" height="14"><polygon points="7,0 9,5 14,5 10,8 12,14 7,10 2,14 4,8 0,5 5,5" fill="#6aab8e" stroke="#30363d"/></svg> Monitor</span>
+        <span class="legend-item"><svg width="14" height="14"><rect x="1" y="2" width="12" height="10" rx="5" fill="#7c8894" stroke="#30363d"/></svg> Namespace</span>
     </div>
 
     <div class="main">

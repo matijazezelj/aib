@@ -11,6 +11,7 @@ import (
 
 	"github.com/matijazezelj/aib/internal/certs"
 	"github.com/matijazezelj/aib/internal/graph"
+	"github.com/matijazezelj/aib/internal/scanner"
 	"github.com/matijazezelj/aib/internal/ui"
 )
 
@@ -19,6 +20,7 @@ type Server struct {
 	store    *graph.SQLiteStore
 	engine   graph.GraphEngine
 	tracker  *certs.Tracker
+	scanner  *scanner.Scanner
 	logger   *slog.Logger
 	listen   string
 	readOnly bool
@@ -27,11 +29,12 @@ type Server struct {
 }
 
 // New creates a new Server.
-func New(store *graph.SQLiteStore, engine graph.GraphEngine, tracker *certs.Tracker, logger *slog.Logger, listen string, readOnly bool, apiToken string) *Server {
+func New(store *graph.SQLiteStore, engine graph.GraphEngine, tracker *certs.Tracker, sc *scanner.Scanner, logger *slog.Logger, listen string, readOnly bool, apiToken string) *Server {
 	return &Server{
 		store:    store,
 		engine:   engine,
 		tracker:  tracker,
+		scanner:  sc,
 		logger:   logger,
 		listen:   listen,
 		readOnly: readOnly,
