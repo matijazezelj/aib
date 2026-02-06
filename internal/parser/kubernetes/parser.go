@@ -16,14 +16,17 @@ type K8sParser struct {
 	ValuesFile string // optional Helm values file
 }
 
+// NewK8sParser creates a Kubernetes parser with an optional Helm values file.
 func NewK8sParser(valuesFile string) *K8sParser {
 	return &K8sParser{ValuesFile: valuesFile}
 }
 
+// Name returns "kubernetes".
 func (p *K8sParser) Name() string {
 	return "kubernetes"
 }
 
+// Supported returns true if the path is a YAML file, Helm chart, or directory with manifests.
 func (p *K8sParser) Supported(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -46,6 +49,7 @@ func (p *K8sParser) Supported(path string) bool {
 	return len(matches)+len(ymlMatches) > 0
 }
 
+// Parse reads Kubernetes manifests or a Helm chart at the given path.
 func (p *K8sParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
 	path, err := parser.SafeResolvePath(path)
 	if err != nil {

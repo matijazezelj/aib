@@ -15,14 +15,17 @@ import (
 // StateParser parses Terraform .tfstate files.
 type StateParser struct{}
 
+// NewStateParser creates a new Terraform state parser.
 func NewStateParser() *StateParser {
 	return &StateParser{}
 }
 
+// Name returns "terraform".
 func (p *StateParser) Name() string {
 	return "terraform"
 }
 
+// Supported returns true if the path is a .tfstate file or a directory containing one.
 func (p *StateParser) Supported(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -46,6 +49,7 @@ func (p *StateParser) Supported(path string) bool {
 	return found
 }
 
+// Parse parses a single path (file or directory) for Terraform state.
 func (p *StateParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
 	return p.ParseMulti(ctx, []string{path})
 }
@@ -129,6 +133,7 @@ type tfState struct {
 	Resources []tfResource `json:"resources"`
 }
 
+// tfResource represents a single resource block in a Terraform state file.
 type tfResource struct {
 	Type      string       `json:"type"`
 	Name      string       `json:"name"`
@@ -138,6 +143,7 @@ type tfResource struct {
 	Instances []tfInstance `json:"instances"`
 }
 
+// tfInstance represents a single instance of a Terraform resource.
 type tfInstance struct {
 	Attributes    map[string]any `json:"attributes"`
 	Dependencies  []string       `json:"dependencies"`

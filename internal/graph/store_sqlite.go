@@ -75,15 +75,18 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+// Init creates the database schema if it doesn't exist.
 func (s *SQLiteStore) Init(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, schema)
 	return err
 }
 
+// Close closes the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// UpsertNode inserts or updates a node in the store.
 func (s *SQLiteStore) UpsertNode(ctx context.Context, node models.Node) error {
 	meta, err := json.Marshal(node.Metadata)
 	if err != nil {
@@ -114,6 +117,7 @@ func (s *SQLiteStore) UpsertNode(ctx context.Context, node models.Node) error {
 	return err
 }
 
+// UpsertEdge inserts or updates an edge in the store.
 func (s *SQLiteStore) UpsertEdge(ctx context.Context, edge models.Edge) error {
 	meta, err := json.Marshal(edge.Metadata)
 	if err != nil {
@@ -129,6 +133,7 @@ func (s *SQLiteStore) UpsertEdge(ctx context.Context, edge models.Edge) error {
 	return err
 }
 
+// GetNode retrieves a single node by ID.
 func (s *SQLiteStore) GetNode(ctx context.Context, id string) (*models.Node, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, name, type, source, source_file, provider, metadata, expires_at, last_seen, first_seen FROM nodes WHERE id = ?`, id)
 	return scanNode(row)
@@ -170,6 +175,7 @@ func scanNode(row interface{ Scan(dest ...any) error }) (*models.Node, error) {
 	return &n, nil
 }
 
+// ListNodes returns nodes matching the given filter.
 func (s *SQLiteStore) ListNodes(ctx context.Context, filter NodeFilter) ([]models.Node, error) {
 	query := `SELECT id, name, type, source, source_file, provider, metadata, expires_at, last_seen, first_seen FROM nodes WHERE 1=1`
 	var args []any
@@ -206,6 +212,7 @@ func (s *SQLiteStore) ListNodes(ctx context.Context, filter NodeFilter) ([]model
 	return nodes, rows.Err()
 }
 
+// ListEdges returns edges matching the given filter.
 func (s *SQLiteStore) ListEdges(ctx context.Context, filter EdgeFilter) ([]models.Edge, error) {
 	query := `SELECT id, from_id, to_id, type, metadata FROM edges WHERE 1=1`
 	var args []any
@@ -264,6 +271,7 @@ func scanEdge(row interface{ Scan(dest ...any) error }) (*models.Edge, error) {
 	return &e, nil
 }
 
+// GetNeighbors returns all nodes connected to the given node (both directions).
 func (s *SQLiteStore) GetNeighbors(ctx context.Context, nodeID string) ([]models.Node, error) {
 	query := `
 		SELECT DISTINCT n.id, n.name, n.type, n.source, n.source_file, n.provider, n.metadata, n.expires_at, n.last_seen, n.first_seen
@@ -292,31 +300,37 @@ func (s *SQLiteStore) GetNeighbors(ctx context.Context, nodeID string) ([]models
 	return nodes, rows.Err()
 }
 
+// GetEdgesFrom returns all edges originating from the given node.
 func (s *SQLiteStore) GetEdgesFrom(ctx context.Context, nodeID string) ([]models.Edge, error) {
 	return s.ListEdges(ctx, EdgeFilter{FromID: nodeID})
 }
 
+// GetEdgesTo returns all edges pointing to the given node.
 func (s *SQLiteStore) GetEdgesTo(ctx context.Context, nodeID string) ([]models.Edge, error) {
 	return s.ListEdges(ctx, EdgeFilter{ToID: nodeID})
 }
 
+// DeleteNode removes a node and its edges from the store.
 func (s *SQLiteStore) DeleteNode(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM nodes WHERE id = ?`, id)
 	return err
 }
 
+// NodeCount returns the total number of nodes.
 func (s *SQLiteStore) NodeCount(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes`).Scan(&count)
 	return count, err
 }
 
+// EdgeCount returns the total number of edges.
 func (s *SQLiteStore) EdgeCount(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM edges`).Scan(&count)
 	return count, err
 }
 
+// RecordScan inserts a new scan record and returns its ID.
 func (s *SQLiteStore) RecordScan(ctx context.Context, scan Scan) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO scans (source, source_path, started_at, status) VALUES (?, ?, ?, ?)
@@ -327,6 +341,7 @@ func (s *SQLiteStore) RecordScan(ctx context.Context, scan Scan) (int64, error) 
 	return res.LastInsertId()
 }
 
+// UpdateScan updates a scan record with its final status and counts.
 func (s *SQLiteStore) UpdateScan(ctx context.Context, id int64, status string, nodesFound, edgesFound int) error {
 	now := time.Now().Format(time.RFC3339)
 	_, err := s.db.ExecContext(ctx, `
@@ -335,6 +350,7 @@ func (s *SQLiteStore) UpdateScan(ctx context.Context, id int64, status string, n
 	return err
 }
 
+// ListScans returns the most recent scan records, up to limit.
 func (s *SQLiteStore) ListScans(ctx context.Context, limit int) ([]Scan, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source, source_path, started_at, finished_at, nodes_found, edges_found, status

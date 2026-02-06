@@ -17,18 +17,22 @@ func NewLocalEngine(store *SQLiteStore) *LocalEngine {
 	return &LocalEngine{store: store}
 }
 
+// BlastRadius returns a flat map of all nodes affected if startNodeID fails.
 func (e *LocalEngine) BlastRadius(ctx context.Context, startNodeID string) (*ImpactResult, error) {
 	return BlastRadius(ctx, e.store, startNodeID)
 }
 
+// BlastRadiusTree returns the impact analysis as a tree rooted at startNodeID.
 func (e *LocalEngine) BlastRadiusTree(ctx context.Context, startNodeID string) (*ImpactNode, error) {
 	return BlastRadiusTree(ctx, e.store, startNodeID)
 }
 
+// Neighbors returns all nodes directly connected to nodeID in either direction.
 func (e *LocalEngine) Neighbors(ctx context.Context, nodeID string) ([]models.Node, error) {
 	return e.store.GetNeighbors(ctx, nodeID)
 }
 
+// ShortestPath finds the shortest path between two nodes using BFS.
 func (e *LocalEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]models.Node, []models.Edge, error) {
 	downstream, upstream, err := e.store.BuildAdjacency(ctx)
 	if err != nil {
@@ -90,6 +94,7 @@ func (e *LocalEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]
 	return nil, nil, fmt.Errorf("no path found between %s and %s", fromID, toID)
 }
 
+// DependencyChain returns all downstream dependencies of nodeID up to maxDepth.
 func (e *LocalEngine) DependencyChain(ctx context.Context, nodeID string, maxDepth int) ([]models.Node, error) {
 	downstream, _, err := e.store.BuildAdjacency(ctx)
 	if err != nil {
@@ -130,6 +135,7 @@ func (e *LocalEngine) DependencyChain(ctx context.Context, nodeID string, maxDep
 	return result, nil
 }
 
+// Close is a no-op for the local engine (no external resources).
 func (e *LocalEngine) Close() error {
 	return nil
 }

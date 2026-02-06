@@ -52,10 +52,12 @@ func (e *MemgraphEngine) Driver() neo4j.DriverWithContext {
 	return e.driver
 }
 
+// Close closes the Memgraph driver connection.
 func (e *MemgraphEngine) Close() error {
 	return e.driver.Close(context.Background())
 }
 
+// BlastRadius returns all nodes affected if startNodeID fails, using Cypher traversal.
 func (e *MemgraphEngine) BlastRadius(ctx context.Context, startNodeID string) (*ImpactResult, error) {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
@@ -115,6 +117,7 @@ func (e *MemgraphEngine) BlastRadius(ctx context.Context, startNodeID string) (*
 	}, nil
 }
 
+// BlastRadiusTree returns the impact analysis as a tree, using Cypher traversal.
 func (e *MemgraphEngine) BlastRadiusTree(ctx context.Context, startNodeID string) (*ImpactNode, error) {
 	// Fetch the root node and all upstream edges in the affected subgraph,
 	// then reconstruct the tree in Go (same structure as LocalEngine).
@@ -231,11 +234,13 @@ func buildMgTree(parent *ImpactNode, upstream map[string][]mgEdgeInfo, nodeMap m
 	}
 }
 
+// mgEdgeInfo holds an edge's source node and type during tree reconstruction.
 type mgEdgeInfo struct {
 	fromID   string
 	edgeType models.EdgeType
 }
 
+// Neighbors returns all nodes connected to nodeID in either direction.
 func (e *MemgraphEngine) Neighbors(ctx context.Context, nodeID string) ([]models.Node, error) {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
@@ -270,6 +275,7 @@ func (e *MemgraphEngine) Neighbors(ctx context.Context, nodeID string) ([]models
 	return nodes, nil
 }
 
+// ShortestPath finds the shortest path between two nodes using Cypher shortestPath.
 func (e *MemgraphEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]models.Node, []models.Edge, error) {
 	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
@@ -308,6 +314,7 @@ func (e *MemgraphEngine) ShortestPath(ctx context.Context, fromID, toID string) 
 	return nodes, nil, nil
 }
 
+// DependencyChain returns all downstream dependencies up to maxDepth using Cypher.
 func (e *MemgraphEngine) DependencyChain(ctx context.Context, nodeID string, maxDepth int) ([]models.Node, error) {
 	if maxDepth <= 0 || maxDepth > 50 {
 		maxDepth = 50

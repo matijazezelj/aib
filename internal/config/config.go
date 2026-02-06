@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Config holds all AIB configuration loaded from file and environment.
 type Config struct {
 	Storage StorageConfig          `mapstructure:"storage"`
 	Sources SourcesConfig          `mapstructure:"sources"`
@@ -17,11 +18,13 @@ type Config struct {
 	Scan    ScanConfig             `mapstructure:"scan"`
 }
 
+// StorageConfig configures the SQLite database and optional Memgraph connection.
 type StorageConfig struct {
 	Path     string         `mapstructure:"path"`
 	Memgraph MemgraphConfig `mapstructure:"memgraph"`
 }
 
+// MemgraphConfig configures the optional Memgraph graph database.
 type MemgraphConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	URI      string `mapstructure:"uri"`
@@ -29,17 +32,20 @@ type MemgraphConfig struct {
 	Password string `mapstructure:"password"`
 }
 
+// SourcesConfig lists all infrastructure sources to scan.
 type SourcesConfig struct {
 	Terraform  []TerraformSource  `mapstructure:"terraform"`
 	Kubernetes []KubernetesSource `mapstructure:"kubernetes"`
 	Ansible    []AnsibleSource    `mapstructure:"ansible"`
 }
 
+// TerraformSource configures a Terraform state file or directory to scan.
 type TerraformSource struct {
 	Path      string `mapstructure:"path"`
 	StateFile string `mapstructure:"state_file"`
 }
 
+// KubernetesSource configures a Kubernetes manifest path, Helm chart, or live cluster.
 type KubernetesSource struct {
 	Path       string   `mapstructure:"path"`
 	HelmChart  string   `mapstructure:"helm_chart"`
@@ -50,32 +56,38 @@ type KubernetesSource struct {
 	Namespaces []string `mapstructure:"namespaces"`
 }
 
+// AnsibleSource configures an Ansible inventory and optional playbook directory.
 type AnsibleSource struct {
 	Inventory string `mapstructure:"inventory"`
 	Playbooks string `mapstructure:"playbooks"`
 }
 
+// CertsConfig configures TLS certificate probing and alert thresholds.
 type CertsConfig struct {
 	ProbeEnabled    bool   `mapstructure:"probe_enabled"`
 	ProbeInterval   string `mapstructure:"probe_interval"`
 	AlertThresholds []int  `mapstructure:"alert_thresholds"`
 }
 
+// AlertsConfig configures alert backends (webhook and stdout).
 type AlertsConfig struct {
 	Webhook WebhookConfig `mapstructure:"webhook"`
 	Stdout  StdoutConfig  `mapstructure:"stdout"`
 }
 
+// WebhookConfig configures the webhook alert backend.
 type WebhookConfig struct {
 	Enabled bool              `mapstructure:"enabled"`
 	URL     string            `mapstructure:"url"`
 	Headers map[string]string `mapstructure:"headers"`
 }
 
+// StdoutConfig configures the stdout alert backend.
 type StdoutConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 }
 
+// ServerConfig configures the HTTP server, API auth, and CORS.
 type ServerConfig struct {
 	Listen     string `mapstructure:"listen"`
 	ReadOnly   bool   `mapstructure:"read_only"`
@@ -83,6 +95,7 @@ type ServerConfig struct {
 	CORSOrigin string `mapstructure:"cors_origin"`
 }
 
+// ScanConfig configures automatic scan scheduling.
 type ScanConfig struct {
 	Schedule  string `mapstructure:"schedule"`
 	OnStartup bool   `mapstructure:"on_startup"`

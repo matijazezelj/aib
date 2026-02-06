@@ -5,6 +5,7 @@ import "time"
 // AssetType represents the kind of infrastructure asset.
 type AssetType string
 
+// Asset type constants for infrastructure resources.
 const (
 	AssetVM           AssetType = "vm"
 	AssetContainer    AssetType = "container"
@@ -41,6 +42,7 @@ const (
 // EdgeType represents the kind of relationship between assets.
 type EdgeType string
 
+// Edge type constants for relationships between assets.
 const (
 	EdgeDependsOn     EdgeType = "depends_on"
 	EdgeRoutesTo      EdgeType = "routes_to"

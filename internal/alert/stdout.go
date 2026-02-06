@@ -9,14 +9,17 @@ import (
 // StdoutAlerter prints events to stdout.
 type StdoutAlerter struct{}
 
+// NewStdoutAlerter creates a new stdout alerter.
 func NewStdoutAlerter() *StdoutAlerter {
 	return &StdoutAlerter{}
 }
 
+// Name returns "stdout".
 func (s *StdoutAlerter) Name() string {
 	return "stdout"
 }
 
+// Send prints the event to stdout.
 func (s *StdoutAlerter) Send(_ context.Context, event Event) error {
 	icon := severityIcon(event.Severity)
 	ts := event.Timestamp.Format(time.RFC3339)

@@ -28,6 +28,7 @@ func NewSyncedStore(store *SQLiteStore, driver neo4j.DriverWithContext, logger *
 	}
 }
 
+// UpsertNode inserts or updates a node in SQLite and mirrors the write to Memgraph.
 func (s *SyncedStore) UpsertNode(ctx context.Context, node models.Node) error {
 	if err := s.SQLiteStore.UpsertNode(ctx, node); err != nil {
 		return err
@@ -40,6 +41,7 @@ func (s *SyncedStore) UpsertNode(ctx context.Context, node models.Node) error {
 	return nil
 }
 
+// UpsertEdge inserts or updates an edge in SQLite and mirrors the write to Memgraph.
 func (s *SyncedStore) UpsertEdge(ctx context.Context, edge models.Edge) error {
 	if err := s.SQLiteStore.UpsertEdge(ctx, edge); err != nil {
 		return err
@@ -52,6 +54,7 @@ func (s *SyncedStore) UpsertEdge(ctx context.Context, edge models.Edge) error {
 	return nil
 }
 
+// DeleteNode removes a node from SQLite and Memgraph.
 func (s *SyncedStore) DeleteNode(ctx context.Context, id string) error {
 	if err := s.SQLiteStore.DeleteNode(ctx, id); err != nil {
 		return err
@@ -64,6 +67,7 @@ func (s *SyncedStore) DeleteNode(ctx context.Context, id string) error {
 	return nil
 }
 
+// Close closes both the SQLite and Memgraph connections.
 func (s *SyncedStore) Close() error {
 	sqlErr := s.SQLiteStore.Close()
 	if s.driver != nil {

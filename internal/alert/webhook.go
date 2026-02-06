@@ -27,10 +27,12 @@ func NewWebhookAlerter(url string, headers map[string]string) *WebhookAlerter {
 	}
 }
 
+// Name returns "webhook".
 func (w *WebhookAlerter) Name() string {
 	return "webhook"
 }
 
+// Send dispatches the event to the webhook URL as JSON.
 func (w *WebhookAlerter) Send(ctx context.Context, event Event) error {
 	body, err := json.Marshal(event)
 	if err != nil {

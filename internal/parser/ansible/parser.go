@@ -18,14 +18,17 @@ type AnsibleParser struct {
 	PlaybookDir string
 }
 
+// NewAnsibleParser creates a parser with an optional playbook directory.
 func NewAnsibleParser(playbookDir string) *AnsibleParser {
 	return &AnsibleParser{PlaybookDir: playbookDir}
 }
 
+// Name returns "ansible".
 func (p *AnsibleParser) Name() string {
 	return "ansible"
 }
 
+// Supported returns true if the path contains Ansible inventory files.
 func (p *AnsibleParser) Supported(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -43,6 +46,7 @@ func (p *AnsibleParser) Supported(path string) bool {
 	return ext == ".ini" || ext == ".yml" || ext == ".yaml" || ext == ""
 }
 
+// Parse reads Ansible inventory and optional playbooks at the given path.
 func (p *AnsibleParser) Parse(ctx context.Context, path string) (*parser.ParseResult, error) {
 	path, err := parser.SafeResolvePath(path)
 	if err != nil {
