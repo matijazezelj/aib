@@ -15,7 +15,7 @@ import (
 // It clears all Memgraph data and re-inserts everything from SQLite.
 func SyncToMemgraph(ctx context.Context, store *SQLiteStore, driver neo4j.DriverWithContext, logger *slog.Logger) error {
 	session := driver.NewSession(ctx, neo4j.SessionConfig{})
-	defer session.Close(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	// Step 1: Clear Memgraph
 	logger.Info("clearing memgraph data")
