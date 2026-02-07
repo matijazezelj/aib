@@ -113,6 +113,26 @@ make docker
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
+### Shell Completion
+
+Generate shell completions for tab-completion of commands and flags:
+
+```bash
+# Bash
+source <(aib completion bash)
+
+# Zsh
+aib completion zsh > "${fpath[1]}/_aib"
+
+# Fish
+aib completion fish | source
+
+# PowerShell
+aib completion powershell | Out-String | Invoke-Expression
+```
+
+Run `aib completion --help` for detailed per-shell setup instructions.
+
 ## Usage
 
 ### Scanning Sources
@@ -218,6 +238,24 @@ AIB parses Ansible inventories to discover:
 - **System services** from `service` tasks with `managed_by` edges
 
 Both INI and YAML inventory formats are detected automatically.
+
+### Logging
+
+Control log output format and verbosity with global flags:
+
+```bash
+# JSON logging (for log aggregation tools)
+aib serve --log-format=json
+
+# Debug level
+aib scan terraform ./infra --log-level=debug
+
+# Combined
+aib serve --log-format=json --log-level=warn
+```
+
+Available formats: `text` (default), `json`
+Available levels: `debug`, `info` (default), `warn`, `error`
 
 ### Querying the Graph
 
