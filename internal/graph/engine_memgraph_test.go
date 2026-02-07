@@ -298,21 +298,21 @@ func TestMemgraph_BlastRadiusTree_Success(t *testing.T) {
 	sess := &mockSession{
 		runFunc: func(cypher string, _ map[string]any) (resultIterator, error) {
 			callCount++
-			switch {
-			case callCount == 1: // root node query
+			switch callCount {
+			case 1: // root node query
 				return &mockResult{
 					records: []*neo4j.Record{
 						makeNodeRecord("C", "C", "subnet", "tf"),
 					},
 				}, nil
-			case callCount == 2: // affected nodes query
+			case 2: // affected nodes query
 				return &mockResult{
 					records: []*neo4j.Record{
 						makeNodeRecord("B", "B", "network", "tf"),
 						makeNodeRecord("A", "A", "vm", "tf"),
 					},
 				}, nil
-			case callCount == 3: // edges query
+			case 3: // edges query
 				return &mockResult{
 					records: []*neo4j.Record{
 						makeRecord(map[string]any{"from_id": "A", "edge_type": "depends_on", "to_id": "B"}),

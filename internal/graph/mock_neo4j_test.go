@@ -108,10 +108,8 @@ func failSessionFactory(err error) sessionFactory {
 // mockDriver implements neo4j.DriverWithContext for testing Close/Driver methods.
 // DriverWithContext is an interface with no unexported methods, so it's mockable.
 type mockDriver struct {
-	closed      bool
-	closeErr    error
-	sessions    []neo4j.SessionWithContext
-	sessionFunc func(ctx context.Context, config neo4j.SessionConfig) neo4j.SessionWithContext
+	closed   bool
+	closeErr error
 }
 
 func (d *mockDriver) Close(_ context.Context) error {
