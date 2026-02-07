@@ -13,9 +13,10 @@ import (
 
 // MemgraphEngine implements GraphEngine using Memgraph via the Bolt protocol.
 type MemgraphEngine struct {
-	driver   neo4j.DriverWithContext
-	fallback *LocalEngine
-	logger   *slog.Logger
+	driver     neo4j.DriverWithContext
+	newSession sessionFactory
+	fallback   *LocalEngine
+	logger     *slog.Logger
 }
 
 // NewMemgraphEngine creates a GraphEngine backed by Memgraph.
@@ -41,9 +42,10 @@ func NewMemgraphEngine(uri, username, password string, fallback *LocalEngine, lo
 
 	logger.Info("memgraph engine initialized", "uri", uri)
 	return &MemgraphEngine{
-		driver:   driver,
-		fallback: fallback,
-		logger:   logger,
+		driver:     driver,
+		newSession: newNeo4jSessionFactory(driver),
+		fallback:   fallback,
+		logger:     logger,
 	}, nil
 }
 
@@ -59,7 +61,7 @@ func (e *MemgraphEngine) Close() error {
 
 // BlastRadius returns all nodes affected if startNodeID fails, using Cypher traversal.
 func (e *MemgraphEngine) BlastRadius(ctx context.Context, startNodeID string) (*ImpactResult, error) {
-	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := e.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	// Find all nodes that transitively point to the start node (upstream traversal).
@@ -121,7 +123,7 @@ func (e *MemgraphEngine) BlastRadius(ctx context.Context, startNodeID string) (*
 func (e *MemgraphEngine) BlastRadiusTree(ctx context.Context, startNodeID string) (*ImpactNode, error) {
 	// Fetch the root node and all upstream edges in the affected subgraph,
 	// then reconstruct the tree in Go (same structure as LocalEngine).
-	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := e.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	// Get root node
@@ -242,7 +244,7 @@ type mgEdgeInfo struct {
 
 // Neighbors returns all nodes connected to nodeID in either direction.
 func (e *MemgraphEngine) Neighbors(ctx context.Context, nodeID string) ([]models.Node, error) {
-	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := e.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	cypher := `
@@ -277,7 +279,7 @@ func (e *MemgraphEngine) Neighbors(ctx context.Context, nodeID string) ([]models
 
 // ShortestPath finds the shortest path between two nodes using Cypher shortestPath.
 func (e *MemgraphEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]models.Node, []models.Edge, error) {
-	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := e.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	cypher := `
@@ -320,7 +322,7 @@ func (e *MemgraphEngine) DependencyChain(ctx context.Context, nodeID string, max
 		maxDepth = 50
 	}
 
-	session := e.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := e.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	cypher := fmt.Sprintf(`

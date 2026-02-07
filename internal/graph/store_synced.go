@@ -15,17 +15,22 @@ import (
 // Memgraph failures are logged but never block the SQLite write.
 type SyncedStore struct {
 	*SQLiteStore
-	driver neo4j.DriverWithContext
-	logger *slog.Logger
+	driver     neo4j.DriverWithContext
+	newSession sessionFactory
+	logger     *slog.Logger
 }
 
 // NewSyncedStore creates a SyncedStore. If driver is nil, no syncing occurs.
 func NewSyncedStore(store *SQLiteStore, driver neo4j.DriverWithContext, logger *slog.Logger) *SyncedStore {
-	return &SyncedStore{
+	s := &SyncedStore{
 		SQLiteStore: store,
 		driver:      driver,
 		logger:      logger,
 	}
+	if driver != nil {
+		s.newSession = newNeo4jSessionFactory(driver)
+	}
+	return s
 }
 
 // UpsertNode inserts or updates a node in SQLite and mirrors the write to Memgraph.
@@ -33,7 +38,7 @@ func (s *SyncedStore) UpsertNode(ctx context.Context, node models.Node) error {
 	if err := s.SQLiteStore.UpsertNode(ctx, node); err != nil {
 		return err
 	}
-	if s.driver != nil {
+	if s.newSession != nil {
 		if err := s.syncNode(ctx, node); err != nil {
 			s.logger.Warn("failed to sync node to memgraph", "nodeID", node.ID, "error", err)
 		}
@@ -46,7 +51,7 @@ func (s *SyncedStore) UpsertEdge(ctx context.Context, edge models.Edge) error {
 	if err := s.SQLiteStore.UpsertEdge(ctx, edge); err != nil {
 		return err
 	}
-	if s.driver != nil {
+	if s.newSession != nil {
 		if err := s.syncEdge(ctx, edge); err != nil {
 			s.logger.Warn("failed to sync edge to memgraph", "edgeID", edge.ID, "error", err)
 		}
@@ -59,7 +64,7 @@ func (s *SyncedStore) DeleteNode(ctx context.Context, id string) error {
 	if err := s.SQLiteStore.DeleteNode(ctx, id); err != nil {
 		return err
 	}
-	if s.driver != nil {
+	if s.newSession != nil {
 		if err := s.deleteMemgraphNode(ctx, id); err != nil {
 			s.logger.Warn("failed to delete node from memgraph", "nodeID", id, "error", err)
 		}
@@ -79,7 +84,7 @@ func (s *SyncedStore) Close() error {
 }
 
 func (s *SyncedStore) syncNode(ctx context.Context, node models.Node) error {
-	session := s.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := s.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	meta, _ := json.Marshal(node.Metadata)
@@ -117,7 +122,7 @@ func (s *SyncedStore) syncNode(ctx context.Context, node models.Node) error {
 }
 
 func (s *SyncedStore) syncEdge(ctx context.Context, edge models.Edge) error {
-	session := s.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := s.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	meta, _ := json.Marshal(edge.Metadata)
@@ -141,7 +146,7 @@ func (s *SyncedStore) syncEdge(ctx context.Context, edge models.Edge) error {
 }
 
 func (s *SyncedStore) deleteMemgraphNode(ctx context.Context, id string) error {
-	session := s.driver.NewSession(ctx, neo4j.SessionConfig{})
+	session := s.newSession(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	_, err := session.Run(ctx, `MATCH (n:Asset {id: $id}) DETACH DELETE n`, map[string]any{"id": id})

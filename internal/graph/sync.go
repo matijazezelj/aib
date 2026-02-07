@@ -14,7 +14,11 @@ import (
 // SyncToMemgraph performs a full synchronization from SQLite to Memgraph.
 // It clears all Memgraph data and re-inserts everything from SQLite.
 func SyncToMemgraph(ctx context.Context, store *SQLiteStore, driver neo4j.DriverWithContext, logger *slog.Logger) error {
-	session := driver.NewSession(ctx, neo4j.SessionConfig{})
+	return syncToMemgraph(ctx, store, newNeo4jSessionFactory(driver), logger)
+}
+
+func syncToMemgraph(ctx context.Context, store *SQLiteStore, sf sessionFactory, logger *slog.Logger) error {
+	session := sf(ctx)
 	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
 
 	// Step 1: Clear Memgraph
