@@ -1,9 +1,14 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -156,5 +161,81 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Alerts.Webhook.Headers[k] = os.ExpandEnv(v)
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation: %w", err)
+	}
+
 	return &cfg, nil
+}
+
+// Validate checks the configuration for common errors and returns a joined
+// multi-error if any problems are found.
+func (c *Config) Validate() error {
+	var errs []error
+
+	if c.Storage.Path == "" {
+		errs = append(errs, fmt.Errorf("storage.path must not be empty"))
+	}
+
+	if c.Storage.Memgraph.Enabled {
+		uri := c.Storage.Memgraph.URI
+		if !strings.HasPrefix(uri, "bolt://") && !strings.HasPrefix(uri, "neo4j://") {
+			errs = append(errs, fmt.Errorf("storage.memgraph.uri must start with bolt:// or neo4j://, got %q", uri))
+		}
+	}
+
+	if c.Certs.ProbeEnabled && c.Certs.ProbeInterval != "" {
+		d, err := time.ParseDuration(c.Certs.ProbeInterval)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("certs.probe_interval %q is not a valid duration: %w", c.Certs.ProbeInterval, err))
+		} else if d < time.Minute {
+			errs = append(errs, fmt.Errorf("certs.probe_interval must be >= 1m, got %s", d))
+		}
+	}
+
+	for i, v := range c.Certs.AlertThresholds {
+		if v <= 0 {
+			errs = append(errs, fmt.Errorf("certs.alert_thresholds[%d] must be positive, got %d", i, v))
+			break
+		}
+		if i > 0 && v >= c.Certs.AlertThresholds[i-1] {
+			errs = append(errs, fmt.Errorf("certs.alert_thresholds must be sorted descending, but [%d]=%d >= [%d]=%d",
+				i-1, c.Certs.AlertThresholds[i-1], i, v))
+			break
+		}
+	}
+
+	if c.Alerts.Webhook.Enabled && c.Alerts.Webhook.URL != "" {
+		u, err := url.Parse(c.Alerts.Webhook.URL)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("alerts.webhook.url is not a valid URL: %w", err))
+		} else if u.Scheme != "http" && u.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("alerts.webhook.url must use http or https scheme, got %q", u.Scheme))
+		}
+	}
+
+	if c.Server.Listen != "" {
+		_, _, err := net.SplitHostPort(c.Server.Listen)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("server.listen %q is not a valid host:port: %w", c.Server.Listen, err))
+		}
+	}
+
+	if c.Server.APIToken != "" && len(c.Server.APIToken) < 8 {
+		errs = append(errs, fmt.Errorf("server.api_token is too short (%d chars), use at least 8 characters", len(c.Server.APIToken)))
+	}
+
+	if c.Scan.Schedule != "" {
+		d, err := time.ParseDuration(c.Scan.Schedule)
+		if err != nil {
+			// Skip cron expressions (they contain spaces)
+			if !strings.Contains(c.Scan.Schedule, " ") {
+				errs = append(errs, fmt.Errorf("scan.schedule %q is not a valid duration: %w", c.Scan.Schedule, err))
+			}
+		} else if d < time.Minute {
+			errs = append(errs, fmt.Errorf("scan.schedule must be >= 1m, got %s", d))
+		}
+	}
+
+	return errors.Join(errs...)
 }

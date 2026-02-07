@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -177,6 +178,136 @@ scan:
 	}
 	if len(cfg.Sources.Ansible) != 1 {
 		t.Errorf("ansible sources = %d, want 1", len(cfg.Sources.Ansible))
+	}
+}
+
+func TestValidate_ValidDefaults(t *testing.T) {
+	cfg, err := loadDefaults()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("defaults should be valid, got: %v", err)
+	}
+}
+
+func TestValidate_EmptyStoragePath(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Storage.Path = ""
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty storage path")
+	}
+	if !strings.Contains(err.Error(), "storage.path") {
+		t.Errorf("error should mention storage.path, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidMemgraphURI(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Storage.Memgraph.Enabled = true
+	cfg.Storage.Memgraph.URI = "http://localhost:7687"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid memgraph URI")
+	}
+	if !strings.Contains(err.Error(), "bolt://") {
+		t.Errorf("error should mention bolt://, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidProbeInterval(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Certs.ProbeEnabled = true
+	cfg.Certs.ProbeInterval = "bad"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid probe interval")
+	}
+}
+
+func TestValidate_ProbeIntervalTooShort(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Certs.ProbeEnabled = true
+	cfg.Certs.ProbeInterval = "30s"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for probe interval < 1m")
+	}
+}
+
+func TestValidate_UnsortedThresholds(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Certs.AlertThresholds = []int{7, 30, 90}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for unsorted thresholds")
+	}
+}
+
+func TestValidate_InvalidWebhookURL(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Alerts.Webhook.Enabled = true
+	cfg.Alerts.Webhook.URL = "not-a-url"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid webhook URL")
+	}
+}
+
+func TestValidate_InvalidServerListen(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Server.Listen = "bad-listen"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid listen address")
+	}
+}
+
+func TestValidate_ShortAPIToken(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Server.APIToken = "abc"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for short API token")
+	}
+}
+
+func TestValidate_InvalidScanSchedule(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Scan.Schedule = "bad"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid scan schedule")
+	}
+}
+
+func TestValidate_CronScheduleAllowed(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Scan.Schedule = "0 */6 * * *"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("cron schedule should be allowed, got: %v", err)
+	}
+}
+
+func TestValidate_MultipleErrors(t *testing.T) {
+	cfg, _ := loadDefaults()
+	cfg.Storage.Path = ""
+	cfg.Server.Listen = "bad"
+	cfg.Server.APIToken = "a"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected errors")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "storage.path") {
+		t.Error("should contain storage.path error")
+	}
+	if !strings.Contains(msg, "server.listen") {
+		t.Error("should contain server.listen error")
+	}
+	if !strings.Contains(msg, "api_token") {
+		t.Error("should contain api_token error")
 	}
 }
 
