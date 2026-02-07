@@ -24,10 +24,12 @@ import (
 )
 
 var (
-	version = "dev"
-	cfgFile string
-	dbPath  string
-	logger  *slog.Logger
+	version   = "dev"
+	cfgFile   string
+	dbPath    string
+	logFormat string
+	logLevel  string
+	logger    *slog.Logger
 )
 
 func main() {
@@ -37,10 +39,28 @@ func main() {
 		Use:   "aib",
 		Short: "AIB — Assets in a Box",
 		Long:  "Infrastructure asset discovery, dependency mapping, and blast radius analysis.",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			level, err := parseLogLevel(logLevel)
+			if err != nil {
+				return err
+			}
+			opts := &slog.HandlerOptions{Level: level}
+			switch logFormat {
+			case "json":
+				logger = slog.New(slog.NewJSONHandler(os.Stderr, opts))
+			case "text":
+				logger = slog.New(slog.NewTextHandler(os.Stderr, opts))
+			default:
+				return fmt.Errorf("invalid --log-format %q (use: text, json)", logFormat)
+			}
+			return nil
+		},
 	}
 
 	root.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ./aib.yaml)")
 	root.PersistentFlags().StringVar(&dbPath, "db", "", "database path (overrides config)")
+	root.PersistentFlags().StringVar(&logFormat, "log-format", "text", "log output format (text, json)")
+	root.PersistentFlags().StringVar(&logLevel, "log-level", "info", "log level (debug, info, warn, error)")
 
 	root.AddCommand(
 		scanCmd(),
@@ -50,6 +70,7 @@ func main() {
 		dbCmd(),
 		serveCmd(),
 		versionCmd(),
+		completionCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -1170,6 +1191,75 @@ func versionCmd() *cobra.Command {
 		Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Printf("aib %s\n", version)
+		},
+	}
+}
+
+func parseLogLevel(s string) (slog.Level, error) {
+	switch strings.ToLower(s) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelInfo, fmt.Errorf("invalid --log-level %q (use: debug, info, warn, error)", s)
+	}
+}
+
+func completionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion scripts",
+		Long: `Generate shell completion scripts for AIB.
+
+To load completions:
+
+Bash:
+  $ source <(aib completion bash)
+  # To load completions for each session, execute once:
+  # Linux:
+  $ aib completion bash > /etc/bash_completion.d/aib
+  # macOS:
+  $ aib completion bash > $(brew --prefix)/etc/bash_completion.d/aib
+
+Zsh:
+  # If shell completion is not already enabled in your environment,
+  # you will need to enable it. Execute once:
+  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
+  # To load completions for each session, execute once:
+  $ aib completion zsh > "${fpath[1]}/_aib"
+  # You will need to start a new shell for this setup to take effect.
+
+Fish:
+  $ aib completion fish | source
+  # To load completions for each session, execute once:
+  $ aib completion fish > ~/.config/fish/completions/aib.fish
+
+PowerShell:
+  PS> aib completion powershell | Out-String | Invoke-Expression
+  # To load completions for every new session, add the output to your profile:
+  PS> aib completion powershell >> $PROFILE
+`,
+		DisableFlagsInUseLine: true,
+		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return cmd.Root().GenBashCompletion(os.Stdout)
+			case "zsh":
+				return cmd.Root().GenZshCompletion(os.Stdout)
+			case "fish":
+				return cmd.Root().GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell: %s", args[0])
+			}
 		},
 	}
 }
