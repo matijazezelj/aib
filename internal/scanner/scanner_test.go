@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/matijazezelj/aib/internal/config"
 	"github.com/matijazezelj/aib/internal/graph"
@@ -141,18 +142,18 @@ func TestRunAsync_Terraform(t *testing.T) {
 		t.Error("expected positive scan ID")
 	}
 
-	// Wait for async scan to complete (poll)
-	ctx := context.Background()
+	// Wait for async scan to complete (poll with sleep)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	for i := 0; i < 100; i++ {
 		scans, _ := store.ListScans(ctx, 10)
 		if len(scans) > 0 && scans[0].Status != "running" {
 			break
 		}
-		// Brief sleep for goroutine to finish
 		select {
 		case <-ctx.Done():
-			t.Fatal("context cancelled")
-		default:
+			t.Fatal("timed out waiting for async scan to complete")
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 
