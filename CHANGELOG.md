@@ -2,6 +2,18 @@
 
 All notable changes to AIB are documented here. See [GitHub Releases](https://github.com/matijazezelj/aib/releases) for download links.
 
+## [0.4.0] - 2026-02-08
+
+### Added
+- **CloudFormation parser**: scan AWS CloudFormation templates (YAML/JSON) for resource dependencies (`aib scan cloudformation`)
+  - Supports ~40 AWS resource types: EC2, RDS, S3, Lambda, IAM, KMS, VPC, ECS, EKS, SQS, SNS, Route53, CloudFront, and more
+  - Edge creation from DependsOn, Ref, Fn::GetAtt intrinsic functions, and property references (VpcId, SubnetId, SecurityGroupIds)
+  - Metadata extraction: InstanceType, CidrBlock, Engine, Runtime, BucketName, CFN tags
+  - Two-phase parsing with cross-file edge resolution (same pattern as Terraform)
+  - Config file support: `sources.cloudformation[].path`
+- **OpenAPI spec**: full OpenAPI 3.0.3 specification at `GET /api/v1/openapi.json` covering all 22 API endpoints
+- **Swagger UI docs**: interactive API documentation at `/api/docs` powered by Swagger UI from CDN
+
 ## [0.3.3] - 2026-02-08
 
 ### Added

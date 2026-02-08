@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Simple VPC with subnet, security group, and EC2 instance
+
+Resources:
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      Tags:
+        - Key: Name
+          Value: my-vpc
+        - Key: Environment
+          Value: production
+
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: MyVPC
+      CidrBlock: "10.0.1.0/24"
+      AvailabilityZone: us-east-1a
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP
+      VpcId:
+        Ref: MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-app-assets
+
+  MyInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: MyBucket
+    Properties:
+      InstanceType: t3.micro
+      SubnetId:
+        Ref: MySubnet
+      SecurityGroupIds:
+        - Ref: MySecurityGroup
+      Tags:
+        - Key: Name
+          Value: web-server

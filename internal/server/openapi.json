@@ -1,0 +1,782 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AIB - Assets in a Box",
+    "description": "REST API for infrastructure asset discovery, dependency mapping, and blast radius analysis.",
+    "version": "0.4.0",
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current server"
+    }
+  ],
+  "security": [
+    {},
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Health check",
+        "tags": ["System"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus metrics",
+        "tags": ["System"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus text format metrics",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph": {
+      "get": {
+        "summary": "Full graph",
+        "description": "Returns all nodes and edges in the asset graph.",
+        "tags": ["Graph"],
+        "responses": {
+          "200": {
+            "description": "Full graph data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Node" }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Edge" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/nodes": {
+      "get": {
+        "summary": "List nodes",
+        "description": "Returns all nodes, optionally filtered by type or source.",
+        "tags": ["Graph"],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter by asset type (e.g. vm, database, service)",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter by source (e.g. terraform, kubernetes, cloudformation)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of nodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Node" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/nodes/{id}": {
+      "get": {
+        "summary": "Get node by ID",
+        "tags": ["Graph"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Node ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Node details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Node" }
+              }
+            }
+          },
+          "404": {
+            "description": "Node not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/edges": {
+      "get": {
+        "summary": "List edges",
+        "description": "Returns all edges, optionally filtered by type.",
+        "tags": ["Graph"],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter by edge type (e.g. depends_on, connects_to)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of edges",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Edge" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/impact/{nodeId}": {
+      "get": {
+        "summary": "Blast radius",
+        "description": "Returns the upstream impact (blast radius) of a node failure. Finds all nodes that depend on the given node.",
+        "tags": ["Impact"],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "description": "Node ID to analyze impact for",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "description": "Maximum traversal depth (default unlimited)",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Impact analysis result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ImpactResult" }
+              }
+            }
+          },
+          "404": {
+            "description": "Node not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/shortest-path": {
+      "get": {
+        "summary": "Shortest path",
+        "description": "Finds the shortest path between two nodes.",
+        "tags": ["Graph"],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "description": "Source node ID",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "description": "Target node ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered list of nodes in the shortest path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Node" }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing parameters",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/dependency-chain/{nodeId}": {
+      "get": {
+        "summary": "Dependency chain",
+        "description": "Returns the full downstream dependency chain for a node.",
+        "tags": ["Graph"],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "description": "Node ID",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "description": "Maximum traversal depth (default unlimited)",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of nodes in the dependency chain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Node" }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Node not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/analysis/cycles": {
+      "get": {
+        "summary": "Detect cycles",
+        "description": "Finds all cycles in the dependency graph.",
+        "tags": ["Analysis"],
+        "responses": {
+          "200": {
+            "description": "List of cycles (each cycle is a list of node IDs)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/analysis/spof": {
+      "get": {
+        "summary": "Single points of failure",
+        "description": "Identifies nodes whose failure would affect the most other nodes.",
+        "tags": ["Analysis"],
+        "parameters": [
+          {
+            "name": "min_affected",
+            "in": "query",
+            "description": "Minimum number of affected nodes to include (default 1)",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results (default 20)",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of SPOF nodes sorted by impact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/SPOFNode" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/analysis/orphans": {
+      "get": {
+        "summary": "Orphan nodes",
+        "description": "Returns nodes with no incoming or outgoing edges.",
+        "tags": ["Analysis"],
+        "responses": {
+          "200": {
+            "description": "List of orphan nodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Node" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certs": {
+      "get": {
+        "summary": "List certificates",
+        "description": "Returns all tracked TLS certificates.",
+        "tags": ["Certificates"],
+        "responses": {
+          "200": {
+            "description": "List of certificates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/CertInfo" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/certs/expiring": {
+      "get": {
+        "summary": "Expiring certificates",
+        "description": "Returns certificates expiring within the given number of days.",
+        "tags": ["Certificates"],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "Number of days to look ahead (default 30)",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of expiring certificates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/CertInfo" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "summary": "Graph statistics",
+        "description": "Returns counts of nodes and edges by type.",
+        "tags": ["Stats"],
+        "responses": {
+          "200": {
+            "description": "Graph statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "node_count": { "type": "integer" },
+                    "edge_count": { "type": "integer" },
+                    "nodes_by_type": {
+                      "type": "object",
+                      "additionalProperties": { "type": "integer" }
+                    },
+                    "edges_by_type": {
+                      "type": "object",
+                      "additionalProperties": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans": {
+      "get": {
+        "summary": "List scans",
+        "description": "Returns the 50 most recent scan records.",
+        "tags": ["Scans"],
+        "responses": {
+          "200": {
+            "description": "List of scan records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Scan" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scan/status": {
+      "get": {
+        "summary": "Scan status",
+        "description": "Returns whether a scan is currently running.",
+        "tags": ["Scans"],
+        "responses": {
+          "200": {
+            "description": "Current scan status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "running": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scan": {
+      "post": {
+        "summary": "Trigger scan",
+        "description": "Triggers an asynchronous scan. Only available when server is not in read-only mode. Requires authentication.",
+        "tags": ["Scans"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ScanTriggerRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Scan started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scan_id": { "type": "integer" },
+                    "status": { "type": "string", "example": "running" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/export/json": {
+      "get": {
+        "summary": "Export as JSON",
+        "description": "Exports the full graph as a JSON document.",
+        "tags": ["Export"],
+        "responses": {
+          "200": {
+            "description": "JSON export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Node" }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Edge" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/export/dot": {
+      "get": {
+        "summary": "Export as DOT",
+        "description": "Exports the full graph in Graphviz DOT format.",
+        "tags": ["Export"],
+        "responses": {
+          "200": {
+            "description": "DOT format graph",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/export/mermaid": {
+      "get": {
+        "summary": "Export as Mermaid",
+        "description": "Exports the full graph in Mermaid diagram format.",
+        "tags": ["Export"],
+        "responses": {
+          "200": {
+            "description": "Mermaid format graph",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plan/impact": {
+      "get": {
+        "summary": "Plan impact analysis",
+        "description": "Returns nodes from the most recent terraform-plan scan along with their blast radius for update/delete/replace actions.",
+        "tags": ["Impact"],
+        "responses": {
+          "200": {
+            "description": "Plan impact results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/PlanImpactNode" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API token passed as Bearer token. Required for write operations."
+      }
+    },
+    "schemas": {
+      "Node": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "tf:vm:web-server" },
+          "name": { "type": "string", "example": "web-server" },
+          "type": { "type": "string", "example": "vm" },
+          "source": { "type": "string", "example": "terraform" },
+          "source_file": { "type": "string", "example": "/path/to/terraform.tfstate" },
+          "provider": { "type": "string", "example": "aws" },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "expires_at": { "type": "string", "format": "date-time", "nullable": true },
+          "last_seen": { "type": "string", "format": "date-time" },
+          "first_seen": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Edge": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "tf:vm:web->depends_on->tf:subnet:main" },
+          "from_id": { "type": "string" },
+          "to_id": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["depends_on", "routes_to", "terminates_tls", "authenticates_with", "resolves_to", "member_of", "mounts_secret", "exposed_by", "connects_to", "managed_by"]
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      },
+      "ImpactResult": {
+        "type": "object",
+        "properties": {
+          "node": { "$ref": "#/components/schemas/Node" },
+          "affected": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ImpactNode" }
+          },
+          "total_affected": { "type": "integer" }
+        }
+      },
+      "ImpactNode": {
+        "type": "object",
+        "properties": {
+          "node": { "$ref": "#/components/schemas/Node" },
+          "depth": { "type": "integer" },
+          "path": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "SPOFNode": {
+        "type": "object",
+        "properties": {
+          "node": { "$ref": "#/components/schemas/Node" },
+          "affected_count": { "type": "integer" }
+        }
+      },
+      "CertInfo": {
+        "type": "object",
+        "properties": {
+          "host": { "type": "string" },
+          "subject": { "type": "string" },
+          "issuer": { "type": "string" },
+          "not_before": { "type": "string", "format": "date-time" },
+          "not_after": { "type": "string", "format": "date-time" },
+          "days_remaining": { "type": "integer" },
+          "serial": { "type": "string" }
+        }
+      },
+      "Scan": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "source": { "type": "string" },
+          "source_path": { "type": "string" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["running", "completed", "failed"] },
+          "nodes_found": { "type": "integer" },
+          "edges_found": { "type": "integer" }
+        }
+      },
+      "ScanTriggerRequest": {
+        "type": "object",
+        "required": ["source"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["terraform", "terraform-plan", "kubernetes", "kubernetes-live", "ansible", "compose", "cloudformation", "all"],
+            "description": "Scan source type"
+          },
+          "paths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Absolute file paths to scan"
+          },
+          "remote": { "type": "boolean", "description": "Pull Terraform state from remote backend" },
+          "workspace": { "type": "string", "description": "Terraform workspace" },
+          "helm": { "type": "boolean", "description": "Treat path as Helm chart" },
+          "values_file": { "type": "string", "description": "Helm values file path" },
+          "namespaces": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Kubernetes namespaces to scan"
+          },
+          "playbooks": { "type": "string", "description": "Ansible playbooks directory" }
+        }
+      },
+      "PlanImpactNode": {
+        "type": "object",
+        "properties": {
+          "node": { "$ref": "#/components/schemas/Node" },
+          "action": { "type": "string", "enum": ["create", "update", "delete", "replace"] },
+          "blast_radius": { "type": "integer" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -144,6 +144,7 @@ func scanCmd() *cobra.Command {
 	cmd.AddCommand(scanAnsibleCmd())
 	cmd.AddCommand(scanK8sCmd())
 	cmd.AddCommand(scanComposeCmd())
+	cmd.AddCommand(scanCloudFormationCmd())
 	return cmd
 }
 
@@ -316,6 +317,30 @@ func scanComposeCmd() *cobra.Command {
 			sc := scanner.New(store, cfg, logger)
 			r := sc.RunSync(cmd.Context(), scanner.ScanRequest{
 				Source: "compose",
+				Paths:  args,
+			})
+			printScanResult(r)
+			if r.Error != nil {
+				return r.Error
+			}
+			return nil
+		},
+	}
+}
+
+func scanCloudFormationCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cloudformation <path> [path...]",
+		Short: "Scan AWS CloudFormation templates for resource dependencies",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cfg := openStore()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
+
+			fmt.Printf("Scanning CloudFormation templates across %d path(s)...\n", len(args))
+			sc := scanner.New(store, cfg, logger)
+			r := sc.RunSync(cmd.Context(), scanner.ScanRequest{
+				Source: "cloudformation",
 				Paths:  args,
 			})
 			printScanResult(r)

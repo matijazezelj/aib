@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Full 3-tier application stack
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      Tags:
+        - Key: Name
+          Value: app-vpc
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: "10.0.1.0/24"
+      AvailabilityZone: us-east-1a
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: "10.0.2.0/24"
+      AvailabilityZone: us-east-1b
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: app-igw
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: InternetGateway
+
+  WebSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Web tier security group
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+
+  AppSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: App tier security group
+      VpcId:
+        Ref: VPC
+
+  DBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Database tier security group
+      VpcId:
+        Ref: VPC
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Ref: PublicSubnet
+      SecurityGroups:
+        - Ref: WebSG
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId:
+        Ref: VPC
+      Port: 8080
+      Protocol: HTTP
+
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: AppRole
+
+  AppServer:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - ALBTargetGroup
+      - AppInstanceProfile
+    Properties:
+      InstanceType: t3.medium
+      SubnetId:
+        Ref: PrivateSubnet
+      SecurityGroupIds:
+        - Ref: AppSG
+      IamInstanceProfile:
+        Ref: AppInstanceProfile
+      Tags:
+        - Key: Name
+          Value: app-server
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      MasterUsername: admin
+      MasterUserPassword:
+        Ref: DBSecret
+      VPCSecurityGroups:
+        - Ref: DBSG
+
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Database master password
+      GenerateSecretString:
+        PasswordLength: 32
+
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encryption key for app data
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                Ref: AppRole
+            Action: "kms:*"
+            Resource: "*"
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: example.com.
+      Name: app.example.com
+      Type: A
+      AliasTarget:
+        DNSName:
+          Fn::GetAtt:
+            - ALB
+            - DNSName
+        HostedZoneId:
+          Fn::GetAtt:
+            - ALB
+            - CanonicalHostedZoneID

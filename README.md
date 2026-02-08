@@ -4,7 +4,7 @@
 
 ![AIB Web UI](assets/aib.png)
 
-Lightweight, self-hosted infrastructure asset discovery and dependency mapping tool. Parses IaC sources (Terraform, Helm/K8s manifests, Ansible), builds a unified asset dependency graph, tracks certificate expiry, and provides blast radius analysis — "what breaks if X fails?"
+Lightweight, self-hosted infrastructure asset discovery and dependency mapping tool. Parses IaC sources (Terraform, CloudFormation, Helm/K8s manifests, Ansible, Docker Compose), builds a unified asset dependency graph, tracks certificate expiry, and provides blast radius analysis — "what breaks if X fails?"
 
 Part of the "in a box" security toolbox alongside [SIB](https://github.com/matijazezelj/sib) (SIEM in a Box) and [NIB](https://github.com/matijazezelj/nib) (NIDS in a Box).
 
@@ -14,8 +14,9 @@ Part of the "in a box" security toolbox alongside [SIB](https://github.com/matij
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
 │  │   Parsers    │  │ Graph Engine│  │  Cert Tracker   │ │
 │  │ - Terraform │──▶│  Asset DB   │◀──│ - TLS Prober   │ │
-│  │ - Helm/K8s  │  │  (SQLite +  │  │ - Expiry Calc  │ │
-│  │ - Ansible   │  │  Memgraph)  │  │                 │ │
+│  │ - CloudFmt  │  │  (SQLite +  │  │ - Expiry Calc  │ │
+│  │ - Helm/K8s  │  │  Memgraph)  │  │                 │ │
+│  │ - Ansible   │  │             │  │                 │ │
 │  └─────────────┘  └──────┬──────┘  └─────────────────┘ │
 │         ┌────────────────┼────────────────┐             │
 │         ▼                ▼                ▼             │
@@ -83,6 +84,16 @@ terraform show -json tfplan > plan.json
 
 # Multiple plan files (cross-file edge resolution)
 ./bin/aib scan terraform-plan infra-plan.json services-plan.json
+```
+
+### Scan CloudFormation templates
+
+```bash
+# Single template file (YAML or JSON)
+./bin/aib scan cloudformation template.yaml
+
+# Multiple templates (cross-file edge resolution)
+./bin/aib scan cloudformation vpc.yaml compute.yaml database.json
 ```
 
 ### View the graph
@@ -288,6 +299,26 @@ AIB parses Ansible inventories to discover:
 
 Both INI and YAML inventory formats are detected automatically.
 
+#### CloudFormation
+
+Scan AWS CloudFormation templates (YAML or JSON) to discover resources and their dependencies:
+
+```bash
+# Single template
+aib scan cloudformation template.yaml
+
+# Multiple templates with cross-file edge resolution
+aib scan cloudformation vpc.yaml compute.yaml database.json
+```
+
+AIB discovers dependencies from:
+- **DependsOn** declarations (explicit ordering)
+- **Ref** intrinsic functions (parameter/resource references)
+- **Fn::GetAtt** intrinsic functions (attribute references)
+- **Property references** like VpcId, SubnetId, SecurityGroupIds
+
+Node IDs use the format `cfn:<assetType>:<logicalId>` (e.g. `cfn:vm:WebServer`, `cfn:database:MyDB`). Templates are detected by file extension (`.yaml`/`.yml`/`.json`) and the presence of `AWSTemplateFormatVersion` or `Resources` keys.
+
 ### Logging
 
 Control log output format and verbosity with global flags:
@@ -475,6 +506,8 @@ aib serve --listen=:9090         # custom port
 aib serve --read-only            # disable scan triggers via API
 ```
 
+Interactive API documentation is available at `/api/docs` (Swagger UI) and the OpenAPI 3.0 spec at `/api/v1/openapi.json`.
+
 The web UI provides an interactive graph visualization with:
 - Distinct node shapes per asset category (rectangles for compute, diamonds for data, hexagons for networking, etc.)
 - Search, filter by type/source, and blast radius highlighting
@@ -523,6 +556,8 @@ Authentication applies to `/api/*` routes only. The web UI, static assets, and `
 | `GET` | `/api/v1/scans` | Scan history |
 | `GET` | `/api/v1/scan/status` | Check if a scan is running |
 | `POST` | `/api/v1/scan` | Trigger a scan |
+| `GET` | `/api/v1/openapi.json` | OpenAPI 3.0 specification |
+| `GET` | `/api/docs` | Interactive Swagger UI documentation |
 
 #### Triggering Scans via API
 
@@ -534,7 +569,7 @@ Authentication applies to `/api/*` routes only. The web UI, static assets, and `
 }
 ```
 
-Valid sources: `terraform`, `terraform-plan`, `kubernetes`, `kubernetes-live`, `ansible`, `all`. For file-based sources, include `paths`:
+Valid sources: `terraform`, `terraform-plan`, `kubernetes`, `kubernetes-live`, `ansible`, `compose`, `cloudformation`, `all`. For file-based sources, include `paths`:
 
 ```json
 {
@@ -727,6 +762,32 @@ Helm charts are supported via `--helm` flag (shells out to `helm template`).
 | `service` task | System service | `service` |
 
 Edges (`managed_by`) are created from playbook task analysis, linking containers and services to the hosts they run on.
+
+### CloudFormation
+
+| Resource Type | Asset Type |
+|--------------|------------|
+| `AWS::EC2::Instance` | `vm` |
+| `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster` | `database` |
+| `AWS::EC2::VPC` | `network` |
+| `AWS::EC2::Subnet` | `subnet` |
+| `AWS::EC2::SecurityGroup` | `firewall_rule` |
+| `AWS::S3::Bucket` | `bucket` |
+| `AWS::Lambda::Function` | `function` |
+| `AWS::ECS::Service` | `service` |
+| `AWS::ElasticLoadBalancingV2::LoadBalancer` | `load_balancer` |
+| `AWS::IAM::Role`, `AWS::IAM::User` | `service_account` |
+| `AWS::IAM::Policy` | `iam_policy` |
+| `AWS::KMS::Key` | `kms_key` |
+| `AWS::SecretsManager::Secret` | `secret` |
+| `AWS::SQS::Queue` | `queue` |
+| `AWS::SNS::Topic` | `pubsub` |
+| `AWS::Route53::RecordSet` | `dns_record` |
+| `AWS::CloudFront::Distribution` | `cdn` |
+| `AWS::DynamoDB::Table` | `nosql_database` |
+| `AWS::CertificateManager::Certificate` | `certificate` |
+
+Edges are created from `DependsOn`, `Ref`, `Fn::GetAtt` intrinsic functions, and property references (`VpcId`, `SubnetId`, `SecurityGroupIds`). When scanning multiple templates, cross-file edges are resolved automatically.
 
 ## Known Limitations
 

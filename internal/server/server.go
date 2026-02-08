@@ -69,7 +69,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'")
+			"default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com")
 		next.ServeHTTP(w, r)
 	})
 }

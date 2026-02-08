@@ -1,0 +1,70 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EC2 with explicit DependsOn in JSON format",
+  "Resources": {
+    "AppVPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16"
+      }
+    },
+    "AppSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "DependsOn": "AppVPC",
+      "Properties": {
+        "VpcId": {"Ref": "AppVPC"},
+        "CidrBlock": "10.0.1.0/24"
+      }
+    },
+    "AppSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "App security group",
+        "VpcId": {"Ref": "AppVPC"}
+      }
+    },
+    "AppQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": "app-tasks"
+      }
+    },
+    "AppTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "TopicName": "app-events"
+      }
+    },
+    "WebServer": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": ["AppSubnet", "AppSG", "AppQueue"],
+      "Properties": {
+        "InstanceType": "t3.large",
+        "SubnetId": {"Ref": "AppSubnet"},
+        "SecurityGroupIds": [{"Ref": "AppSG"}],
+        "Tags": [
+          {"Key": "Name", "Value": "web-server"},
+          {"Key": "Team", "Value": "platform"}
+        ]
+      }
+    },
+    "LambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": "process-events",
+        "Runtime": "python3.12",
+        "Handler": "index.handler",
+        "Code": {
+          "S3Bucket": "my-code-bucket",
+          "S3Key": "lambda.zip"
+        },
+        "Environment": {
+          "Variables": {
+            "QUEUE_URL": {"Fn::GetAtt": ["AppQueue", "QueueUrl"]},
+            "TOPIC_ARN": {"Ref": "AppTopic"}
+          }
+        }
+      }
+    }
+  }
+}

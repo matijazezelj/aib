@@ -29,6 +29,9 @@ func RegisterRoutes(mux *http.ServeMux, s *Server) {
 
 	mux.HandleFunc("GET /api/v1/plan/impact", s.handlePlanImpact)
 
+	mux.HandleFunc("GET /api/v1/openapi.json", s.handleOpenAPISpec)
+	mux.HandleFunc("GET /api/docs", s.handleAPIDocs)
+
 	if !s.readOnly {
 		mux.HandleFunc("POST /api/v1/scan", s.handleTriggerScan)
 	}

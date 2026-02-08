@@ -39,14 +39,20 @@ type MemgraphConfig struct {
 
 // SourcesConfig lists all infrastructure sources to scan.
 type SourcesConfig struct {
-	Terraform  []TerraformSource  `mapstructure:"terraform"`
-	Kubernetes []KubernetesSource `mapstructure:"kubernetes"`
-	Ansible    []AnsibleSource    `mapstructure:"ansible"`
-	Compose    []ComposeSource    `mapstructure:"compose"`
+	Terraform      []TerraformSource      `mapstructure:"terraform"`
+	Kubernetes     []KubernetesSource     `mapstructure:"kubernetes"`
+	Ansible        []AnsibleSource        `mapstructure:"ansible"`
+	Compose        []ComposeSource        `mapstructure:"compose"`
+	CloudFormation []CloudFormationSource `mapstructure:"cloudformation"`
 }
 
 // ComposeSource configures a Docker Compose file or directory to scan.
 type ComposeSource struct {
+	Path string `mapstructure:"path"`
+}
+
+// CloudFormationSource configures a CloudFormation template file or directory to scan.
+type CloudFormationSource struct {
 	Path string `mapstructure:"path"`
 }
 
