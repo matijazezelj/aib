@@ -140,6 +140,7 @@ func scanCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(scanTerraformCmd())
+	cmd.AddCommand(scanTerraformPlanCmd())
 	cmd.AddCommand(scanAnsibleCmd())
 	cmd.AddCommand(scanK8sCmd())
 	cmd.AddCommand(scanComposeCmd())
@@ -177,6 +178,37 @@ func scanTerraformCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&remote, "remote", false, "pull state from remote backend via 'terraform state pull'")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "terraform workspace to pull (use '*' for all workspaces)")
 	return cmd
+}
+
+func scanTerraformPlanCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "terraform-plan <plan.json> [plan.json...]",
+		Short: "Scan Terraform plan JSON output for pre-deploy impact analysis",
+		Long:  "Parses output of 'terraform show -json <planfile>' to discover planned resource changes.",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cfg := openStore()
+			defer store.Close() //nolint:errcheck // best-effort cleanup
+
+			fmt.Printf("Scanning Terraform plan across %d file(s)...\n", len(args))
+			sc := scanner.New(store, cfg, logger)
+			r := sc.RunSync(cmd.Context(), scanner.ScanRequest{
+				Source: "terraform-plan",
+				Paths:  args,
+			})
+			if r.Error != nil {
+				fmt.Printf("Scan failed: %v\n", r.Error)
+				return r.Error
+			}
+
+			// Print summary with action breakdown.
+			fmt.Printf("Discovered %d nodes, %d edges\n", r.NodesFound, r.EdgesFound)
+			for _, w := range r.Warnings {
+				fmt.Printf("  warning: %s\n", w)
+			}
+			return nil
+		},
+	}
 }
 
 func scanAnsibleCmd() *cobra.Command {
@@ -313,7 +345,7 @@ func graphCmd() *cobra.Command {
 		Use:   "graph",
 		Short: "Query the asset graph",
 	}
-	cmd.AddCommand(graphShowCmd(), graphNodesCmd(), graphEdgesCmd(), graphNeighborsCmd(), graphPathCmd(), graphDepsCmd(), graphPruneCmd(), graphExportCmd(), graphSyncCmd())
+	cmd.AddCommand(graphShowCmd(), graphNodesCmd(), graphEdgesCmd(), graphNeighborsCmd(), graphPathCmd(), graphDepsCmd(), graphPruneCmd(), graphExportCmd(), graphSyncCmd(), graphCyclesCmd(), graphSPOFCmd(), graphOrphansCmd())
 	return cmd
 }
 
@@ -680,6 +712,106 @@ func graphSyncCmd() *cobra.Command {
 			defer driver.Close(context.Background()) //nolint:errcheck // best-effort cleanup
 
 			return graph.SyncToMemgraph(cmd.Context(), store, driver, logger)
+		},
+	}
+}
+
+func graphCyclesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cycles",
+		Short: "Detect circular dependencies in the graph",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			store, engine, _ := openStoreAndEngine()
+			defer store.Close()  //nolint:errcheck // best-effort cleanup
+			defer engine.Close() //nolint:errcheck // best-effort cleanup
+
+			cycles, err := engine.FindCycles(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if len(cycles) == 0 {
+				fmt.Println("No circular dependencies found.")
+				return nil
+			}
+
+			fmt.Printf("Found %d circular dependency chain(s):\n\n", len(cycles))
+			for i, cycle := range cycles {
+				path := strings.Join(cycle, " → ")
+				fmt.Printf("  %d. %s → %s\n", i+1, path, cycle[0])
+			}
+			return nil
+		},
+	}
+}
+
+func graphSPOFCmd() *cobra.Command {
+	var minAffected int
+	var limit int
+
+	cmd := &cobra.Command{
+		Use:   "spof",
+		Short: "Identify single points of failure ranked by blast radius",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			store, engine, _ := openStoreAndEngine()
+			defer store.Close()  //nolint:errcheck // best-effort cleanup
+			defer engine.Close() //nolint:errcheck // best-effort cleanup
+
+			spofs, err := engine.FindSPOF(cmd.Context(), minAffected)
+			if err != nil {
+				return err
+			}
+
+			if len(spofs) == 0 {
+				fmt.Println("No single points of failure found.")
+				return nil
+			}
+
+			if limit > 0 && len(spofs) > limit {
+				spofs = spofs[:limit]
+			}
+
+			fmt.Printf("Top %d single points of failure (min affected: %d):\n\n", len(spofs), minAffected)
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			_, _ = fmt.Fprintln(w, "RANK\tID\tNAME\tTYPE\tAFFECTED")
+			for i, s := range spofs {
+				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%d\n", i+1, s.Node.ID, s.Node.Name, s.Node.Type, s.AffectedCount)
+			}
+			return w.Flush()
+		},
+	}
+
+	cmd.Flags().IntVar(&minAffected, "min-affected", 1, "minimum blast radius to report")
+	cmd.Flags().IntVar(&limit, "limit", 20, "maximum number of results (0 = unlimited)")
+	return cmd
+}
+
+func graphOrphansCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "orphans",
+		Short: "List nodes with no connections",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			store, engine, _ := openStoreAndEngine()
+			defer store.Close()  //nolint:errcheck // best-effort cleanup
+			defer engine.Close() //nolint:errcheck // best-effort cleanup
+
+			orphans, err := engine.FindOrphans(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if len(orphans) == 0 {
+				fmt.Println("No orphan nodes found.")
+				return nil
+			}
+
+			fmt.Printf("Found %d orphan node(s):\n\n", len(orphans))
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tTYPE\tSOURCE")
+			for _, n := range orphans {
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", n.ID, n.Name, n.Type, n.Source)
+			}
+			return w.Flush()
 		},
 	}
 }

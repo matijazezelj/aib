@@ -353,7 +353,7 @@ func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validSources := map[string]bool{
-		"terraform": true, "kubernetes": true,
+		"terraform": true, "terraform-plan": true, "kubernetes": true,
 		"kubernetes-live": true, "ansible": true, "compose": true, "all": true,
 	}
 	if !validSources[req.Source] {
@@ -414,6 +414,115 @@ func (s *Server) handleTriggerScan(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request) {
 	running := s.scanner != nil && s.scanner.IsRunning()
 	writeJSON(w, http.StatusOK, map[string]any{"running": running})
+}
+
+func (s *Server) handleCycles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	cycles, err := s.engine.FindCycles(ctx)
+	if err != nil {
+		s.logger.Error("finding cycles", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cycles": cycles,
+		"count":  len(cycles),
+	})
+}
+
+func (s *Server) handleSPOF(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	minAffected := 1
+	if m := r.URL.Query().Get("min_affected"); m != "" {
+		if parsed, err := strconv.Atoi(m); err == nil && parsed >= 1 {
+			minAffected = parsed
+		}
+	}
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed >= 1 {
+			limit = parsed
+		}
+	}
+
+	spofs, err := s.engine.FindSPOF(ctx, minAffected)
+	if err != nil {
+		s.logger.Error("finding spof", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if limit > 0 && len(spofs) > limit {
+		spofs = spofs[:limit]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"spof":  spofs,
+		"count": len(spofs),
+	})
+}
+
+func (s *Server) handleOrphans(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	orphans, err := s.engine.FindOrphans(ctx)
+	if err != nil {
+		s.logger.Error("finding orphans", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"orphans": orphans,
+		"count":   len(orphans),
+	})
+}
+
+// planImpactNode represents a planned resource change with its blast radius.
+type planImpactNode struct {
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	Type          string         `json:"type"`
+	Action        string         `json:"action"`
+	AffectedCount int            `json:"affected_count"`
+	AffectedByType map[string]int `json:"affected_by_type,omitempty"`
+}
+
+func (s *Server) handlePlanImpact(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Find all nodes from terraform-plan source.
+	nodes, err := s.store.ListNodes(ctx, graph.NodeFilter{Source: "terraform-plan"})
+	if err != nil {
+		s.logger.Error("listing plan nodes", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var results []planImpactNode
+	for _, n := range nodes {
+		action := n.Metadata["plan_action"]
+		pin := planImpactNode{
+			ID:     n.ID,
+			Name:   n.Name,
+			Type:   string(n.Type),
+			Action: action,
+		}
+
+		// Compute blast radius for update/delete/replace actions.
+		if action == "update" || action == "delete" || action == "replace" {
+			impact, err := s.engine.BlastRadius(ctx, n.ID)
+			if err == nil {
+				pin.AffectedCount = impact.AffectedNodes
+				pin.AffectedByType = impact.AffectedByType
+			}
+		}
+
+		results = append(results, pin)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"plan_nodes": results,
+		"count":      len(results),
+	})
 }
 
 func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {

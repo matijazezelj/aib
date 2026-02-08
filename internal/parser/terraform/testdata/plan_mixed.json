@@ -1,0 +1,104 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.5.0",
+  "resource_changes": [
+    {
+      "address": "aws_instance.web",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "web-server",
+          "instance_type": "t3.micro"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_db_instance.main",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "prod-db",
+          "instance_type": "db.t3.medium"
+        },
+        "after": {
+          "name": "prod-db",
+          "instance_type": "db.t3.large"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_s3_bucket.old",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "old",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete"],
+        "before": {
+          "name": "old-bucket",
+          "region": "us-west-2"
+        },
+        "after": null,
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_security_group.web",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "name": "web-sg"
+        },
+        "after": {
+          "name": "web-sg"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_vpc.main",
+      "mode": "managed",
+      "type": "aws_vpc",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["no-op"],
+        "before": {
+          "name": "main-vpc"
+        },
+        "after": {
+          "name": "main-vpc"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "data.aws_ami.latest",
+      "mode": "data",
+      "type": "aws_ami",
+      "name": "latest",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["read"],
+        "before": null,
+        "after": {},
+        "after_unknown": {}
+      }
+    }
+  ]
+}

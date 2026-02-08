@@ -1,0 +1,145 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.4",
+  "resource_changes": [
+    {
+      "address": "aws_ecs_service.api",
+      "mode": "managed",
+      "type": "aws_ecs_service",
+      "name": "api",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "api-service",
+          "launch_type": "FARGATE",
+          "desired_count": 3,
+          "network": "prod-vpc",
+          "subnet_id": "private-subnet-a",
+          "tags": {
+            "Name": "api-service",
+            "Team": "backend"
+          }
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true
+        }
+      }
+    },
+    {
+      "address": "aws_ecs_task_definition.api",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "api",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "api-task",
+          "family": "api",
+          "cpu": "256",
+          "memory": "512",
+          "network_mode": "awsvpc",
+          "requires_compatibilities": ["FARGATE"],
+          "tags": {
+            "Name": "api-task"
+          }
+        },
+        "after_unknown": {
+          "arn": true,
+          "revision": true
+        }
+      }
+    },
+    {
+      "address": "aws_sqs_queue.events",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "events",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "event-queue",
+          "visibility_timeout_seconds": 30,
+          "message_retention_seconds": 86400
+        },
+        "after": {
+          "name": "event-queue",
+          "visibility_timeout_seconds": 60,
+          "message_retention_seconds": 604800
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_sns_topic.alerts",
+      "mode": "managed",
+      "type": "aws_sns_topic",
+      "name": "alerts",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "prod-alerts",
+          "tags": {
+            "Name": "prod-alerts"
+          }
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true
+        }
+      }
+    },
+    {
+      "address": "aws_lambda_function.processor",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "processor",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "event-processor",
+          "runtime": "python3.11",
+          "handler": "main.handler",
+          "memory_size": 256,
+          "timeout": 30,
+          "tags": {
+            "Name": "event-processor"
+          }
+        },
+        "after_unknown": {
+          "arn": true,
+          "invoke_arn": true,
+          "version": true
+        }
+      }
+    },
+    {
+      "address": "aws_secretsmanager_secret.db_creds",
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret",
+      "name": "db_creds",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "prod/db-credentials",
+          "description": "Database credentials for production"
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true
+        }
+      }
+    }
+  ]
+}

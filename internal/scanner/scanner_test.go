@@ -171,3 +171,160 @@ func TestRunAsync_Terraform(t *testing.T) {
 		t.Error("scan record not found")
 	}
 }
+
+func TestRunSync_TerraformPlan(t *testing.T) {
+	sc, store := newTestScanner(t)
+
+	testdata, err := filepath.Abs("../parser/terraform/testdata/plan_create.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(context.Background(), ScanRequest{
+		Source: "terraform-plan",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound != 2 {
+		t.Errorf("NodesFound = %d, want 2", result.NodesFound)
+	}
+
+	scans, _ := store.ListScans(context.Background(), 10)
+	if len(scans) != 1 {
+		t.Fatalf("expected 1 scan, got %d", len(scans))
+	}
+	if scans[0].Status != "completed" {
+		t.Errorf("scan status = %q, want completed", scans[0].Status)
+	}
+}
+
+func TestRunSync_TerraformPlanRealistic(t *testing.T) {
+	sc, store := newTestScanner(t)
+	ctx := context.Background()
+
+	testdata, err := filepath.Abs("../parser/terraform/testdata/plan_realistic.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(ctx, ScanRequest{
+		Source: "terraform-plan",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound != 11 {
+		t.Errorf("NodesFound = %d, want 11", result.NodesFound)
+	}
+	if result.EdgesFound < 4 {
+		t.Errorf("EdgesFound = %d, want >= 4 (vpc_id attribute edges)", result.EdgesFound)
+	}
+
+	// Verify nodes were persisted to store
+	nodes, err := store.ListNodes(ctx, graph.NodeFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 11 {
+		t.Errorf("stored nodes = %d, want 11", len(nodes))
+	}
+
+	// Verify edges were persisted
+	edges, err := store.ListEdges(ctx, graph.EdgeFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) < 4 {
+		t.Errorf("stored edges = %d, want >= 4", len(edges))
+	}
+
+	// Verify specific node exists in store with correct metadata
+	node, err := store.GetNode(ctx, "tf:vm:web-server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node == nil {
+		t.Fatal("tf:vm:web-server not found in store")
+	}
+	if node.Source != "terraform-plan" {
+		t.Errorf("stored source = %q, want terraform-plan", node.Source)
+	}
+	if node.Metadata["plan_action"] != "create" {
+		t.Errorf("stored plan_action = %q, want create", node.Metadata["plan_action"])
+	}
+
+	// Verify scan record
+	scans, _ := store.ListScans(ctx, 10)
+	if len(scans) != 1 {
+		t.Fatalf("expected 1 scan, got %d", len(scans))
+	}
+	if scans[0].Status != "completed" {
+		t.Errorf("scan status = %q, want completed", scans[0].Status)
+	}
+	if scans[0].NodesFound != 11 {
+		t.Errorf("scan record NodesFound = %d, want 11", scans[0].NodesFound)
+	}
+}
+
+func TestRunSync_TerraformPlanMultiFile(t *testing.T) {
+	sc, store := newTestScanner(t)
+	ctx := context.Background()
+
+	infra, err := filepath.Abs("../parser/terraform/testdata/plan_realistic.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	services, err := filepath.Abs("../parser/terraform/testdata/plan_services.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := sc.RunSync(ctx, ScanRequest{
+		Source: "terraform-plan",
+		Paths:  []string{infra, services},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	// plan_realistic: 11 nodes, plan_services: 6 nodes = 17 total
+	if result.NodesFound != 17 {
+		t.Errorf("NodesFound = %d, want 17", result.NodesFound)
+	}
+
+	// Verify all nodes persisted
+	nodes, err := store.ListNodes(ctx, graph.NodeFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 17 {
+		t.Errorf("stored nodes = %d, want 17", len(nodes))
+	}
+
+	// Verify cross-file edge: api-service → prod-vpc
+	edges, err := store.ListEdges(ctx, graph.EdgeFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundCrossFileEdge := false
+	for _, e := range edges {
+		if e.FromID == "tf:service:api-service" && e.ToID == "tf:network:prod-vpc" {
+			foundCrossFileEdge = true
+			break
+		}
+	}
+	if !foundCrossFileEdge {
+		t.Error("missing cross-file edge: api-service → prod-vpc")
+	}
+}

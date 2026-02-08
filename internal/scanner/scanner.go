@@ -266,6 +266,8 @@ func (s *Scanner) executeScan(ctx context.Context, req ScanRequest) (*parser.Par
 		return s.scanAnsible(ctx, req)
 	case "compose":
 		return s.scanCompose(ctx, req)
+	case "terraform-plan":
+		return s.scanTerraformPlan(ctx, req)
 	case "all":
 		// "all" is handled specially by RunAsync — it runs RunAllConfigured.
 		// If it reaches here via RunSync, just run all configured sources.
@@ -335,6 +337,11 @@ func (s *Scanner) scanCompose(ctx context.Context, req ScanRequest) (*parser.Par
 	}
 
 	return merged, nil
+}
+
+func (s *Scanner) scanTerraformPlan(ctx context.Context, req ScanRequest) (*parser.ParseResult, error) {
+	p := terraform.NewPlanParser()
+	return p.ParseMulti(ctx, req.Paths)
 }
 
 func (s *Scanner) scanAnsible(ctx context.Context, req ScanRequest) (*parser.ParseResult, error) {

@@ -290,3 +290,4 @@ func TestAuthMiddleware_NonAPIPath(t *testing.T) {
 		t.Errorf("status = %d, want 200 (non-API bypasses auth)", rr.Code)
 	}
 }
+

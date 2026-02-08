@@ -474,6 +474,30 @@ func (s *SQLiteStore) BuildAdjacency(ctx context.Context) (downstream map[string
 	return downstream, upstream, nil
 }
 
+// FindOrphanNodes returns nodes that have no edges (neither incoming nor outgoing).
+func (s *SQLiteStore) FindOrphanNodes(ctx context.Context) ([]models.Node, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, name, type, source, source_file, provider, metadata, expires_at, last_seen, first_seen
+		FROM nodes
+		WHERE id NOT IN (SELECT from_id FROM edges UNION SELECT to_id FROM edges)
+		ORDER BY type, name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck // best-effort cleanup
+
+	var nodes []models.Node
+	for rows.Next() {
+		n, err := scanNode(rows)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, *n)
+	}
+	return nodes, rows.Err()
+}
+
 // GenerateEdgeID creates a deterministic edge ID.
 func GenerateEdgeID(fromID, toID string, edgeType models.EdgeType) string {
 	return strings.Join([]string{fromID, string(edgeType), toID}, "->")

@@ -355,6 +355,139 @@ func (e *MemgraphEngine) DependencyChain(ctx context.Context, nodeID string, max
 	return nodes, nil
 }
 
+// FindCycles detects circular dependencies using Cypher.
+func (e *MemgraphEngine) FindCycles(ctx context.Context) ([][]string, error) {
+	session := e.newSession(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
+
+	cypher := `
+		MATCH path = (n:Asset)-[*1..50]->(n)
+		WITH [node IN nodes(path) | node.id] AS ids
+		RETURN ids
+		LIMIT 100
+	`
+
+	result, err := session.Run(ctx, cypher, nil)
+	if err != nil {
+		e.logger.Warn("memgraph find cycles failed, falling back", "error", err)
+		return e.fallback.FindCycles(ctx)
+	}
+
+	seen := make(map[string]bool)
+	var cycles [][]string
+	for result.Next(ctx) {
+		rec := result.Record()
+		idsVal, _ := rec.Get("ids")
+		idsSlice, ok := idsVal.([]any)
+		if !ok || len(idsSlice) < 2 {
+			continue
+		}
+		// Last element == first (the repeated node), trim it
+		var cycle []string
+		for _, v := range idsSlice[:len(idsSlice)-1] {
+			cycle = append(cycle, toString(v))
+		}
+		normalized := normalizeCycle(cycle)
+		key := fmt.Sprintf("%v", normalized)
+		if !seen[key] {
+			seen[key] = true
+			cycles = append(cycles, normalized)
+		}
+	}
+
+	if err := result.Err(); err != nil {
+		e.logger.Warn("memgraph cycles result error, falling back", "error", err)
+		return e.fallback.FindCycles(ctx)
+	}
+
+	return cycles, nil
+}
+
+// FindSPOF identifies single points of failure using Cypher upstream traversal.
+func (e *MemgraphEngine) FindSPOF(ctx context.Context, minAffected int) ([]SPOFNode, error) {
+	session := e.newSession(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
+
+	cypher := `
+		MATCH (root:Asset)
+		OPTIONAL MATCH (a:Asset)-[*1..]->(root)
+		WHERE a.id <> root.id
+		WITH root, count(DISTINCT a) AS cnt
+		WHERE cnt >= $min
+		RETURN root.id AS id, root.name AS name, root.type AS type,
+		       root.source AS source, root.source_file AS source_file,
+		       root.provider AS provider, root.metadata AS metadata,
+		       root.expires_at AS expires_at, root.last_seen AS last_seen,
+		       root.first_seen AS first_seen, cnt
+		ORDER BY cnt DESC
+	`
+
+	result, err := session.Run(ctx, cypher, map[string]any{"min": int64(minAffected)})
+	if err != nil {
+		e.logger.Warn("memgraph find spof failed, falling back", "error", err)
+		return e.fallback.FindSPOF(ctx, minAffected)
+	}
+
+	var spofs []SPOFNode
+	for result.Next(ctx) {
+		rec := result.Record()
+		node := recordToNode(rec)
+		cntVal, _ := rec.Get("cnt")
+		cnt := 0
+		if c, ok := cntVal.(int64); ok {
+			cnt = int(c)
+		}
+		spofs = append(spofs, SPOFNode{
+			Node:           node,
+			AffectedCount:  cnt,
+			AffectedByType: map[string]int{}, // Cypher doesn't break down by type here
+		})
+	}
+
+	if err := result.Err(); err != nil {
+		e.logger.Warn("memgraph spof result error, falling back", "error", err)
+		return e.fallback.FindSPOF(ctx, minAffected)
+	}
+
+	return spofs, nil
+}
+
+// FindOrphans returns nodes with no edges using Cypher.
+func (e *MemgraphEngine) FindOrphans(ctx context.Context) ([]models.Node, error) {
+	session := e.newSession(ctx)
+	defer session.Close(ctx) //nolint:errcheck // best-effort cleanup
+
+	cypher := `
+		MATCH (n:Asset)
+		WHERE NOT (n)-[]-()
+		RETURN n.id AS id, n.name AS name, n.type AS type,
+		       n.source AS source, n.source_file AS source_file,
+		       n.provider AS provider, n.metadata AS metadata,
+		       n.expires_at AS expires_at, n.last_seen AS last_seen,
+		       n.first_seen AS first_seen
+		ORDER BY type, name
+	`
+
+	result, err := session.Run(ctx, cypher, nil)
+	if err != nil {
+		e.logger.Warn("memgraph find orphans failed, falling back", "error", err)
+		return e.fallback.FindOrphans(ctx)
+	}
+
+	var nodes []models.Node
+	for result.Next(ctx) {
+		n := recordToNode(result.Record())
+		nodes = append(nodes, *n)
+	}
+
+	if err := result.Err(); err != nil {
+		e.logger.Warn("memgraph orphans result error, falling back", "error", err)
+		return e.fallback.FindOrphans(ctx)
+	}
+
+	return nodes, nil
+}
+
 // recordToNode converts a neo4j record to a models.Node.
 func recordToNode(record *neo4j.Record) *models.Node {
 	node := &models.Node{

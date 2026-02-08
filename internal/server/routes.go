@@ -19,9 +19,15 @@ func RegisterRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /api/v1/scans", s.handleScans)
 	mux.HandleFunc("GET /api/v1/scan/status", s.handleScanStatus)
 
+	mux.HandleFunc("GET /api/v1/graph/analysis/cycles", s.handleCycles)
+	mux.HandleFunc("GET /api/v1/graph/analysis/spof", s.handleSPOF)
+	mux.HandleFunc("GET /api/v1/graph/analysis/orphans", s.handleOrphans)
+
 	mux.HandleFunc("GET /api/v1/export/json", s.handleExportJSON)
 	mux.HandleFunc("GET /api/v1/export/dot", s.handleExportDOT)
 	mux.HandleFunc("GET /api/v1/export/mermaid", s.handleExportMermaid)
+
+	mux.HandleFunc("GET /api/v1/plan/impact", s.handlePlanImpact)
 
 	if !s.readOnly {
 		mux.HandleFunc("POST /api/v1/scan", s.handleTriggerScan)

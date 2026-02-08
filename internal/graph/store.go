@@ -56,6 +56,9 @@ type Store interface {
 
 	// ListScans returns recent scan records.
 	ListScans(ctx context.Context, limit int) ([]Scan, error)
+
+	// FindOrphanNodes returns nodes that have no edges (neither incoming nor outgoing).
+	FindOrphanNodes(ctx context.Context) ([]models.Node, error)
 }
 
 // NodeFilter specifies criteria for listing nodes.

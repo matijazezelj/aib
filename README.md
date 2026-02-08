@@ -70,6 +70,17 @@ make build
 ./bin/aib scan ansible staging.ini production.ini --playbooks=/path/to/playbooks/
 ```
 
+### Scan Terraform plan output
+
+```bash
+# Parse terraform show -json output for pre-deploy impact analysis
+terraform show -json tfplan > plan.json
+./bin/aib scan terraform-plan plan.json
+
+# Multiple plan files (cross-file edge resolution)
+./bin/aib scan terraform-plan infra-plan.json services-plan.json
+```
+
 ### View the graph
 
 ```bash
@@ -82,6 +93,20 @@ make build
 
 ```bash
 ./bin/aib impact node tf:network:prod-vpc
+```
+
+### Graph analysis
+
+```bash
+# Detect circular dependencies
+./bin/aib graph cycles
+
+# Find single points of failure (ranked by blast radius)
+./bin/aib graph spof
+./bin/aib graph spof --min-affected=3 --limit=10
+
+# List orphan nodes (no edges)
+./bin/aib graph orphans
 ```
 
 ### Start the web UI
@@ -178,6 +203,26 @@ aib scan terraform --remote --workspace='*' project-a/ project-b/
 ```
 
 This requires the `terraform` CLI to be installed and each project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
+
+#### Terraform Plan Analysis
+
+Parse `terraform show -json` output to assess the impact of planned changes **before** applying them. AIB classifies each resource change as create, update, delete, or replace, and cross-references with the existing graph to compute blast radius for destructive actions:
+
+```bash
+# Generate plan JSON
+terraform plan -out=tfplan
+terraform show -json tfplan > plan.json
+
+# Scan the plan
+aib scan terraform-plan plan.json
+
+# Multiple plan files (cross-file edge resolution)
+aib scan terraform-plan infra-plan.json services-plan.json
+```
+
+Plan nodes are stored with `source=terraform-plan` and include a `plan_action` metadata field (create/update/delete/replace). No-op resources and data sources are skipped. The plan parser reuses the same 100+ resource type mappings as the state parser, so node IDs are compatible for cross-referencing plan changes against existing state-scanned infrastructure.
+
+The plan impact API (`GET /api/v1/plan/impact`) lists all plan nodes and computes blast radius for update/delete/replace actions.
 
 #### Kubernetes / Helm
 
@@ -328,6 +373,38 @@ Impact Analysis: tf:network:prod-vpc
    └── [depends_on] tf:database:cloudsql-prod (database)
 ```
 
+### Graph Analysis
+
+Detect structural issues in your infrastructure graph:
+
+```
+$ aib graph cycles
+Circular Dependencies
+  Cycle 1: A → B → C → A
+
+  Found 1 circular dependency chain(s)
+```
+
+```
+$ aib graph spof --min-affected=2
+Single Points of Failure
+  RANK  ID                      NAME       TYPE      AFFECTED
+  1     tf:network:prod-vpc     prod-vpc   network   4
+
+  Found 1 single point(s) of failure (min affected: 2)
+```
+
+```
+$ aib graph orphans
+Orphan Nodes (no connections)
+  ID                          NAME             TYPE     SOURCE
+  tf:bucket:myproj-assets     myproj-assets    bucket   terraform
+
+  Found 1 orphan node(s)
+```
+
+**Cycles** indicate circular dependencies that may cause deployment ordering issues. **Single points of failure** are nodes with the highest blast radius — if they fail, many other nodes are affected. **Orphans** are nodes with zero edges, which may indicate stale or misconfigured resources.
+
 ### Certificate Management
 
 Probe a TLS endpoint and track the certificate:
@@ -431,7 +508,11 @@ Authentication applies to `/api/*` routes only. The web UI, static assets, and `
 | `GET` | `/api/v1/graph/nodes` | List nodes (`?type=`, `?source=`, `?provider=`) |
 | `GET` | `/api/v1/graph/nodes/:id` | Single node details |
 | `GET` | `/api/v1/graph/edges` | List edges (`?type=`, `?from=`, `?to=`) |
+| `GET` | `/api/v1/graph/analysis/cycles` | Detect circular dependencies |
+| `GET` | `/api/v1/graph/analysis/spof` | Single points of failure (`?min_affected=`, `?limit=`) |
+| `GET` | `/api/v1/graph/analysis/orphans` | Orphan nodes (no edges) |
 | `GET` | `/api/v1/impact/:nodeId` | Blast radius for a node |
+| `GET` | `/api/v1/plan/impact` | Terraform plan impact analysis |
 | `GET` | `/api/v1/certs` | All tracked certificates |
 | `GET` | `/api/v1/certs/expiring` | Expiring certs (`?days=30`) |
 | `GET` | `/api/v1/stats` | Summary statistics |
@@ -449,7 +530,7 @@ Authentication applies to `/api/*` routes only. The web UI, static assets, and `
 }
 ```
 
-Valid sources: `terraform`, `kubernetes`, `kubernetes-live`, `ansible`, `all`. For file-based sources, include `paths`:
+Valid sources: `terraform`, `terraform-plan`, `kubernetes`, `kubernetes-live`, `ansible`, `all`. For file-based sources, include `paths`:
 
 ```json
 {

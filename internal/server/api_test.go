@@ -698,3 +698,139 @@ func TestTriggerScan_PathTraversal(t *testing.T) {
 		t.Errorf("status = %d, want 503 (scanner nil checked first)", resp.StatusCode)
 	}
 }
+
+// --- Graph analysis endpoint tests ---
+
+func TestHandleCycles(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	ctx := context.Background()
+	now := time.Now()
+	_ = store.UpsertNode(ctx, models.Node{ID: "A", Name: "A", Type: models.AssetVM, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "B", Name: "B", Type: models.AssetNetwork, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "A->B", FromID: "A", ToID: "B", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "B->A", FromID: "B", ToID: "A", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph/analysis/cycles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	count := int(result["count"].(float64))
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+}
+
+func TestHandleSPOF(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	ctx := context.Background()
+	now := time.Now()
+	_ = store.UpsertNode(ctx, models.Node{ID: "A", Name: "A", Type: models.AssetVM, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "B", Name: "B", Type: models.AssetNetwork, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "C", Name: "C", Type: models.AssetSubnet, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "A->C", FromID: "A", ToID: "C", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "B->C", FromID: "B", ToID: "C", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph/analysis/spof?min_affected=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	count := int(result["count"].(float64))
+	if count == 0 {
+		t.Error("expected at least one SPOF")
+	}
+}
+
+func TestHandleOrphans(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	ctx := context.Background()
+	now := time.Now()
+	_ = store.UpsertNode(ctx, models.Node{ID: "A", Name: "A", Type: models.AssetVM, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "B", Name: "B", Type: models.AssetNetwork, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "C", Name: "C", Type: models.AssetSubnet, Source: "tf", Provider: "test", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "A->B", FromID: "A", ToID: "B", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph/analysis/orphans")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	count := int(result["count"].(float64))
+	if count != 1 {
+		t.Errorf("orphan count = %d, want 1", count)
+	}
+}
+
+func TestHandlePlanImpact(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	ctx := context.Background()
+	now := time.Now()
+
+	// Create a plan node with update action
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "tf:database:prod-db", Name: "prod-db", Type: models.AssetDatabase,
+		Source: "terraform-plan", Provider: "aws",
+		Metadata: map[string]string{"plan_action": "update"},
+		LastSeen: now, FirstSeen: now,
+	})
+
+	// Create a dependent node
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "tf:vm:web", Name: "web", Type: models.AssetVM,
+		Source: "terraform", Provider: "aws",
+		Metadata: map[string]string{},
+		LastSeen: now, FirstSeen: now,
+	})
+	_ = store.UpsertEdge(ctx, models.Edge{
+		ID: "web->db", FromID: "tf:vm:web", ToID: "tf:database:prod-db",
+		Type: models.EdgeDependsOn, Metadata: map[string]string{},
+	})
+
+	resp, err := http.Get(ts.URL + "/api/v1/plan/impact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	count := int(result["count"].(float64))
+	if count != 1 {
+		t.Errorf("plan nodes = %d, want 1", count)
+	}
+
+	planNodes := result["plan_nodes"].([]any)
+	pn := planNodes[0].(map[string]any)
+	if pn["action"] != "update" {
+		t.Errorf("action = %v, want update", pn["action"])
+	}
+	if int(pn["affected_count"].(float64)) != 1 {
+		t.Errorf("affected_count = %v, want 1", pn["affected_count"])
+	}
+}

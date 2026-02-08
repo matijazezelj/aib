@@ -581,3 +581,73 @@ func TestGenerateEdgeID(t *testing.T) {
 		t.Errorf("GenerateEdgeID = %q, want %q", id, want)
 	}
 }
+
+func TestFindOrphanNodes(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	buildTestGraph(t, store,
+		[]models.Node{
+			makeNode("a", models.AssetVM, "tf"),
+			makeNode("b", models.AssetNetwork, "tf"),
+			makeNode("c", models.AssetSubnet, "tf"),
+			makeNode("d", models.AssetVM, "tf"),
+		},
+		[]models.Edge{
+			makeEdge("a", "b", models.EdgeDependsOn),
+		},
+	)
+
+	orphans, err := store.FindOrphanNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 2 {
+		t.Fatalf("expected 2 orphans, got %d", len(orphans))
+	}
+
+	// Should be c and d (ordered by type, name)
+	ids := map[string]bool{}
+	for _, o := range orphans {
+		ids[o.ID] = true
+	}
+	if !ids["c"] || !ids["d"] {
+		t.Errorf("expected orphans c and d, got %v", ids)
+	}
+}
+
+func TestFindOrphanNodes_NoOrphans(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	buildTestGraph(t, store,
+		[]models.Node{
+			makeNode("a", models.AssetVM, "tf"),
+			makeNode("b", models.AssetNetwork, "tf"),
+		},
+		[]models.Edge{
+			makeEdge("a", "b", models.EdgeDependsOn),
+		},
+	)
+
+	orphans, err := store.FindOrphanNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Errorf("expected 0 orphans, got %d", len(orphans))
+	}
+}
+
+func TestFindOrphanNodes_EmptyGraph(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	orphans, err := store.FindOrphanNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Errorf("expected 0 orphans (no nodes), got %d", len(orphans))
+	}
+}

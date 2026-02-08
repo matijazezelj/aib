@@ -570,3 +570,199 @@ func TestMemgraph_SessionClosed(t *testing.T) {
 		t.Error("session should be closed after BlastRadius")
 	}
 }
+
+// --- FindCycles memgraph tests ---
+
+func TestMemgraph_FindCycles_Success(t *testing.T) {
+	sess := &mockSession{
+		runFunc: func(_ string, _ map[string]any) (resultIterator, error) {
+			return &mockResult{
+				records: []*neo4j.Record{
+					makeRecord(map[string]any{"ids": []any{"A", "B", "C", "A"}}),
+				},
+			}, nil
+		},
+	}
+	engine, _ := newTestMemgraphEngine(t, sess)
+
+	cycles, err := engine.FindCycles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cycles) != 1 {
+		t.Fatalf("cycles = %d, want 1", len(cycles))
+	}
+	if len(cycles[0]) != 3 {
+		t.Errorf("cycle length = %d, want 3", len(cycles[0]))
+	}
+}
+
+func TestMemgraph_FindCycles_Fallback(t *testing.T) {
+	// Build a graph with cycle in the fallback store
+	store := newTestStore(t)
+	buildTestGraph(t, store,
+		[]models.Node{
+			makeNode("A", models.AssetVM, "tf"),
+			makeNode("B", models.AssetNetwork, "tf"),
+		},
+		[]models.Edge{
+			makeEdge("A", "B", models.EdgeDependsOn),
+			makeEdge("B", "A", models.EdgeDependsOn),
+		},
+	)
+	local := NewLocalEngine(store)
+	engine := &MemgraphEngine{
+		newSession: failSessionFactory(fmt.Errorf("down")),
+		fallback:   local,
+		logger:     slog.New(slog.NewTextHandler(nopWriter{}, nil)),
+	}
+
+	cycles, err := engine.FindCycles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cycles) != 1 {
+		t.Errorf("cycles (fallback) = %d, want 1", len(cycles))
+	}
+}
+
+// --- FindSPOF memgraph tests ---
+
+func TestMemgraph_FindSPOF_Success(t *testing.T) {
+	sess := &mockSession{
+		runFunc: func(_ string, _ map[string]any) (resultIterator, error) {
+			return &mockResult{
+				records: []*neo4j.Record{
+					{
+						Keys:   []string{"id", "name", "type", "source", "source_file", "provider", "metadata", "expires_at", "last_seen", "first_seen", "cnt"},
+						Values: []any{"C", "C", "subnet", "tf", "", "", "", "", "", "", int64(2)},
+					},
+				},
+			}, nil
+		},
+	}
+	engine, _ := newTestMemgraphEngine(t, sess)
+
+	spofs, err := engine.FindSPOF(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spofs) != 1 {
+		t.Fatalf("spofs = %d, want 1", len(spofs))
+	}
+	if spofs[0].Node.ID != "C" {
+		t.Errorf("spof node = %s, want C", spofs[0].Node.ID)
+	}
+	if spofs[0].AffectedCount != 2 {
+		t.Errorf("affected = %d, want 2", spofs[0].AffectedCount)
+	}
+}
+
+func TestMemgraph_FindSPOF_Fallback(t *testing.T) {
+	engine, _ := newTestMemgraphEngine(t, &mockSession{
+		runFunc: func(_ string, _ map[string]any) (resultIterator, error) {
+			return nil, fmt.Errorf("down")
+		},
+	})
+
+	spofs, err := engine.FindSPOF(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fallback local engine on A->B->C graph: C has 2 affected (B, A)
+	if len(spofs) == 0 {
+		t.Fatal("expected SPOF results from fallback")
+	}
+}
+
+// --- FindOrphans memgraph tests ---
+
+func TestMemgraph_FindOrphans_Success(t *testing.T) {
+	sess := &mockSession{
+		runFunc: func(_ string, _ map[string]any) (resultIterator, error) {
+			return &mockResult{
+				records: []*neo4j.Record{
+					makeNodeRecord("X", "orphan-x", "vm", "tf"),
+				},
+			}, nil
+		},
+	}
+	engine, _ := newTestMemgraphEngine(t, sess)
+
+	orphans, err := engine.FindOrphans(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("orphans = %d, want 1", len(orphans))
+	}
+	if orphans[0].ID != "X" {
+		t.Errorf("orphan = %s, want X", orphans[0].ID)
+	}
+}
+
+func TestMemgraph_FindOrphans_Fallback(t *testing.T) {
+	// Build store with an orphan node
+	store := newTestStore(t)
+	buildTestGraph(t, store,
+		[]models.Node{
+			makeNode("A", models.AssetVM, "tf"),
+			makeNode("B", models.AssetNetwork, "tf"),
+			makeNode("C", models.AssetSubnet, "tf"), // orphan
+		},
+		[]models.Edge{
+			makeEdge("A", "B", models.EdgeDependsOn),
+		},
+	)
+	local := NewLocalEngine(store)
+	engine := &MemgraphEngine{
+		newSession: failSessionFactory(fmt.Errorf("down")),
+		fallback:   local,
+		logger:     slog.New(slog.NewTextHandler(nopWriter{}, nil)),
+	}
+
+	orphans, err := engine.FindOrphans(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("orphans (fallback) = %d, want 1", len(orphans))
+	}
+	if orphans[0].ID != "C" {
+		t.Errorf("orphan = %s, want C", orphans[0].ID)
+	}
+}
+
+func TestMemgraph_FindOrphans_ResultError(t *testing.T) {
+	sess := &mockSession{
+		runFunc: func(_ string, _ map[string]any) (resultIterator, error) {
+			return &mockResult{err: fmt.Errorf("result error")}, nil
+		},
+	}
+	// Build store with orphan for fallback
+	store := newTestStore(t)
+	buildTestGraph(t, store,
+		[]models.Node{
+			makeNode("A", models.AssetVM, "tf"),
+			makeNode("B", models.AssetNetwork, "tf"),
+			makeNode("C", models.AssetSubnet, "tf"),
+		},
+		[]models.Edge{
+			makeEdge("A", "B", models.EdgeDependsOn),
+		},
+	)
+	local := NewLocalEngine(store)
+	engine := &MemgraphEngine{
+		newSession: mockSessionFactory(sess),
+		fallback:   local,
+		logger:     slog.New(slog.NewTextHandler(nopWriter{}, nil)),
+	}
+
+	orphans, err := engine.FindOrphans(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 1 {
+		t.Errorf("orphans (result error fallback) = %d, want 1", len(orphans))
+	}
+}
