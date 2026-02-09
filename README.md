@@ -4,394 +4,126 @@
 
 ![AIB Web UI](assets/aib.png)
 
-Lightweight, self-hosted infrastructure asset discovery and dependency mapping tool. Parses IaC sources (Terraform, CloudFormation, Helm/K8s manifests, Ansible, Docker Compose), builds a unified asset dependency graph, tracks certificate expiry, and provides blast radius analysis — "what breaks if X fails?"
+Lightweight, self-hosted infrastructure asset discovery and dependency mapping tool. Parses IaC sources (Terraform, Pulumi, CloudFormation, Kubernetes/Helm, Ansible, Docker Compose), builds a unified dependency graph, tracks certificate expiry, and provides blast radius analysis — "what breaks if X fails?"
 
 Part of the "in a box" security toolbox alongside [SIB](https://github.com/matijazezelj/sib) (SIEM in a Box) and [NIB](https://github.com/matijazezelj/nib) (NIDS in a Box).
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        AIB Core                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
-│  │   Parsers    │  │ Graph Engine│  │  Cert Tracker   │ │
-│  │ - Terraform │──▶│  Asset DB   │◀──│ - TLS Prober   │ │
-│  │ - CloudFmt  │  │  (SQLite +  │  │ - Expiry Calc  │ │
-│  │ - Helm/K8s  │  │  Memgraph)  │  │                 │ │
-│  │ - Ansible   │  │             │  │                 │ │
-│  └─────────────┘  └──────┬──────┘  └─────────────────┘ │
-│         ┌────────────────┼────────────────┐             │
-│         ▼                ▼                ▼             │
-│  ┌────────────┐  ┌─────────────┐  ┌──────────────┐    │
-│  │  CLI/Query │  │   Web UI    │  │  Alerting    │    │
-│  │  Interface │  │  (Embedded) │  │  (Webhooks)  │    │
-│  └────────────┘  └─────────────┘  └──────────────┘    │
-└─────────────────────────────────────────────────────────┘
-```
-
 ## Quick Start
 
-### Build from source
-
 ```bash
-git clone https://github.com/matijazezelj/aib.git
-cd aib
-make build
-```
-
-### Scan Terraform state files
-
-```bash
-# Single file or directory (recursive)
-./bin/aib scan terraform /path/to/terraform.tfstate
-./bin/aib scan terraform /path/to/terraform/directory/
-
-# Multiple paths — cross-state edges resolve automatically
-./bin/aib scan terraform networking.tfstate compute.tfstate data.tfstate
-./bin/aib scan terraform staging/ production/
-```
-
-### Scan from remote backends
-
-```bash
-# Multiple remote projects with cross-state resolution
-./bin/aib scan terraform --remote project-networking/ project-compute/
-
-# All workspaces across multiple projects
-./bin/aib scan terraform --remote --workspace='*' project-a/ project-b/
-```
-
-### Scan Kubernetes manifests
-
-```bash
-./bin/aib scan k8s /path/to/manifests/
-./bin/aib scan k8s base.yaml overlays/prod/ overlays/staging/
-./bin/aib scan k8s /path/to/helm/chart --helm
-./bin/aib scan k8s /path/to/helm/chart --helm --values=values-prod.yaml
-```
-
-### Scan Ansible inventories
-
-```bash
-./bin/aib scan ansible /path/to/inventory.ini
-./bin/aib scan ansible staging.ini production.ini --playbooks=/path/to/playbooks/
-```
-
-### Scan Terraform plan output
-
-```bash
-# Parse terraform show -json output for pre-deploy impact analysis
-terraform show -json tfplan > plan.json
-./bin/aib scan terraform-plan plan.json
-
-# Multiple plan files (cross-file edge resolution)
-./bin/aib scan terraform-plan infra-plan.json services-plan.json
-```
-
-### Scan CloudFormation templates
-
-```bash
-# Single template file (YAML or JSON)
-./bin/aib scan cloudformation template.yaml
-
-# Multiple templates (cross-file edge resolution)
-./bin/aib scan cloudformation vpc.yaml compute.yaml database.json
-```
-
-### View the graph
-
-```bash
-./bin/aib graph show
-./bin/aib graph nodes
-./bin/aib graph edges
-```
-
-### Analyze blast radius
-
-```bash
-./bin/aib impact node tf:network:prod-vpc
-```
-
-### Graph analysis
-
-```bash
-# Detect circular dependencies
-./bin/aib graph cycles
-
-# Find single points of failure (ranked by blast radius)
-./bin/aib graph spof
-./bin/aib graph spof --min-affected=3 --limit=10
-
-# List orphan nodes (no edges)
-./bin/aib graph orphans
-```
-
-### Start the web UI
-
-```bash
-./bin/aib serve
-# Open http://localhost:8080
-```
-
-## Installation
-
-**Prerequisites:** Go 1.22+
-
-```bash
-# Build
-make build
+# Build from source (requires Go 1.22+)
+git clone https://github.com/matijazezelj/aib.git && cd aib && make build
 
 # Or install directly
 go install github.com/matijazezelj/aib/cmd/aib@latest
-```
 
-### Docker
-
-```bash
-# Build image
-make docker
-
-# Or use docker-compose (includes Memgraph)
+# Or use Docker (includes optional Memgraph)
 docker compose -f deploy/docker-compose.yml up --build
+
+# Scan some infrastructure
+./bin/aib scan terraform /path/to/terraform.tfstate
+./bin/aib scan k8s /path/to/manifests/
+
+# Start the web UI
+./bin/aib serve   # http://localhost:8080
 ```
 
-### Shell Completion
+## Scanning Sources
 
-Generate shell completions for tab-completion of commands and flags:
+AIB supports 7 IaC parsers. All support multiple paths with automatic cross-file edge resolution.
+
+### Terraform State
+
+Parses `.tfstate` files (100+ resource type mappings across AWS, GCP, Azure, Cloudflare, TLS). Edges come from `dependencies` arrays and attribute references (vpc_id, subnet_id, etc.). Node IDs: `tf:<assetType>:<name>`.
 
 ```bash
-# Bash
-source <(aib completion bash)
-
-# Zsh
-aib completion zsh > "${fpath[1]}/_aib"
-
-# Fish
-aib completion fish | source
-
-# PowerShell
-aib completion powershell | Out-String | Invoke-Expression
-```
-
-Run `aib completion --help` for detailed per-shell setup instructions.
-
-## Usage
-
-### Scanning Sources
-
-Scan Terraform state files to discover infrastructure assets and their dependencies:
-
-```
-$ aib scan terraform terraform.tfstate
-Scanning Terraform state across 1 path(s)...
-Discovered 6 nodes, 8 edges
-```
-
-AIB recursively discovers `.tfstate` files in directories and supports scanning multiple paths at once. When multiple paths are given, a single global ref map is built so that **cross-state edges resolve automatically** — a VM in one state file that depends on a network defined in another will get proper `depends_on` and `connects_to` edges:
-
-```bash
-# Recursive directory scan
+aib scan terraform terraform.tfstate
 aib scan terraform /path/to/terraform/directory/
+aib scan terraform networking.tfstate compute.tfstate   # cross-state edges
 
-# Multiple paths with cross-state resolution
-aib scan terraform networking/ compute/ data/
-aib scan terraform staging.tfstate production.tfstate
-```
-
-#### Remote State
-
-Pull state directly from remote backends (S3, GCS, Azure, etc.) using `terraform state pull`. Multiple remote projects are supported with cross-state edge resolution:
-
-```bash
-# Single project, default workspace
-aib scan terraform /path/to/project --remote
-
-# Specific workspace
-aib scan terraform /path/to/project --remote --workspace=production
-
-# All workspaces (cross-workspace resolution)
-aib scan terraform /path/to/project --remote --workspace='*'
-
-# Multiple remote projects (cross-state resolution across projects)
-aib scan terraform --remote project-networking/ project-compute/ project-data/
-
-# All workspaces across multiple projects
+# Remote backends (requires terraform CLI)
+aib scan terraform --remote project/
 aib scan terraform --remote --workspace='*' project-a/ project-b/
 ```
 
-This requires the `terraform` CLI to be installed and each project directory to have a valid backend configuration (e.g. `backend "s3" {}` in your `.tf` files). AIB shells out to `terraform state pull` so your existing credentials and backend config are used as-is.
+### Terraform Plan
 
-#### Terraform Plan Analysis
-
-Parse `terraform show -json` output to assess the impact of planned changes **before** applying them. AIB classifies each resource change as create, update, delete, or replace, and cross-references with the existing graph to compute blast radius for destructive actions:
+Parses `terraform show -json` output for pre-deploy impact analysis. Classifies changes as create/update/delete/replace and computes blast radius for destructive actions. Node IDs are compatible with state-scanned nodes.
 
 ```bash
-# Generate plan JSON
-terraform plan -out=tfplan
-terraform show -json tfplan > plan.json
-
-# Scan the plan
+terraform plan -out=tfplan && terraform show -json tfplan > plan.json
 aib scan terraform-plan plan.json
-
-# Multiple plan files (cross-file edge resolution)
 aib scan terraform-plan infra-plan.json services-plan.json
 ```
 
-Plan nodes are stored with `source=terraform-plan` and include a `plan_action` metadata field (create/update/delete/replace). No-op resources and data sources are skipped. The plan parser reuses the same 100+ resource type mappings as the state parser, so node IDs are compatible for cross-referencing plan changes against existing state-scanned infrastructure.
+### Kubernetes / Helm
 
-The plan impact API (`GET /api/v1/plan/impact`) lists all plan nodes and computes blast radius for update/delete/replace actions.
-
-#### Kubernetes / Helm
-
-Scan Kubernetes YAML manifests or Helm charts to map workloads, services, ingresses, secrets, and their dependencies. Multiple paths are supported:
+Scans YAML manifests or Helm charts. Discovers workloads, services, ingresses, secrets, configmaps and their relationships (label selector matching, TLS termination, volume mounts, envFrom refs). Node IDs: `k8s:<assetType>:<namespace>/<name>`.
 
 ```bash
-# Single manifest file
 aib scan k8s deployment.yaml
-
-# Directory of manifests
-aib scan k8s /path/to/k8s/manifests/
-
-# Multiple paths
-aib scan k8s base.yaml overlays/prod/ overlays/staging/
-
-# Helm chart (renders via helm template, then parses)
-aib scan k8s /path/to/chart --helm
+aib scan k8s /path/to/manifests/
 aib scan k8s /path/to/chart --helm --values=values-prod.yaml
+
+# Live cluster scanning (requires kubectl)
+aib scan k8s --live
+aib scan k8s --live --kubeconfig=~/.kube/config --context=prod --namespace=app
 ```
 
-Node IDs are namespace-scoped (e.g. `k8s:pod:production/api-backend`, `k8s:service:default/redis-svc`).
+### Ansible
 
-AIB discovers the following relationships:
-- **Service → Pod**: label selector matching (`member_of`)
-- **Ingress → Service**: backend routing rules (`routes_to`)
-- **Ingress → Secret**: TLS termination (`terminates_tls`)
-- **Deployment → Secret**: volume mounts, envFrom, env valueFrom (`mounts_secret`)
-- **Deployment → ConfigMap**: volume mounts, envFrom (`depends_on`)
-- **Certificate → Secret**: cert-manager CRD (`depends_on`)
-
-This enables blast radius queries like "what breaks if the TLS cert secret expires?" — showing the ingress, deployment, and certificate are all affected.
-
-#### Ansible
-
-Scan Ansible inventory files (INI or YAML format) to discover hosts, containers, and services. Multiple paths are supported:
+Parses inventory files (INI/YAML) to discover hosts. With `--playbooks`, also discovers containers and services from `docker_container` and `service` tasks. Node IDs: `ansible:<assetType>:<hostname>`.
 
 ```bash
-# INI inventory
-aib scan ansible /etc/ansible/hosts
-
-# YAML inventory
-aib scan ansible inventory.yml
-
-# Multiple inventories
-aib scan ansible staging.ini production.ini
-
-# With playbook analysis (discovers containers, services, and managed_by edges)
-aib scan ansible inventory.ini --playbooks=./playbooks/
-
-# Scan a directory containing inventory files
-aib scan ansible /path/to/inventory/
+aib scan ansible inventory.ini
+aib scan ansible staging.ini production.ini --playbooks=./playbooks/
 ```
 
-AIB parses Ansible inventories to discover:
-- **Hosts** as VM nodes (`ansible:vm:<hostname>`)
-- **Group memberships** and host variables stored as metadata
-- **Docker containers** from `docker_container` tasks with `managed_by` edges to target hosts
-- **System services** from `service` tasks with `managed_by` edges
+### Docker Compose
 
-Both INI and YAML inventory formats are detected automatically.
-
-#### CloudFormation
-
-Scan AWS CloudFormation templates (YAML or JSON) to discover resources and their dependencies:
+Parses Docker Compose files to discover services, networks, and volumes with their dependency relationships (depends_on, network membership, volume mounts). Node IDs: `compose:<assetType>:<name>`.
 
 ```bash
-# Single template
+aib scan compose docker-compose.yml
+aib scan compose docker-compose.yml docker-compose.override.yml
+```
+
+### CloudFormation
+
+Parses AWS CloudFormation templates (YAML/JSON, ~40 resource type mappings). Edges from DependsOn, Ref, Fn::GetAtt, and property references (VpcId, SubnetId, SecurityGroupIds). Node IDs: `cfn:<assetType>:<logicalId>`.
+
+```bash
 aib scan cloudformation template.yaml
-
-# Multiple templates with cross-file edge resolution
 aib scan cloudformation vpc.yaml compute.yaml database.json
 ```
 
-AIB discovers dependencies from:
-- **DependsOn** declarations (explicit ordering)
-- **Ref** intrinsic functions (parameter/resource references)
-- **Fn::GetAtt** intrinsic functions (attribute references)
-- **Property references** like VpcId, SubnetId, SecurityGroupIds
+### Pulumi
 
-Node IDs use the format `cfn:<assetType>:<logicalId>` (e.g. `cfn:vm:WebServer`, `cfn:database:MyDB`). Templates are detected by file extension (`.yaml`/`.yml`/`.json`) and the presence of `AWSTemplateFormatVersion` or `Resources` keys.
-
-### Logging
-
-Control log output format and verbosity with global flags:
+Parses `pulumi stack export` JSON output (~80 resource type mappings across AWS, GCP, Azure, Kubernetes, TLS). Edges from dependency arrays, attribute references, and parent URNs. Node IDs: `plm:<assetType>:<name>`.
 
 ```bash
-# JSON logging (for log aggregation tools)
-aib serve --log-format=json
-
-# Debug level
-aib scan terraform ./infra --log-level=debug
-
-# Combined
-aib serve --log-format=json --log-level=warn
+aib scan pulumi stack-export.json
+aib scan pulumi infra-stack.json app-stack.json
 ```
 
-Available formats: `text` (default), `json`
-Available levels: `debug`, `info` (default), `warn`, `error`
-
-### Querying the Graph
-
-```
-$ aib graph show
-Graph Summary
-  Total nodes: 6
-  Total edges: 8
-
-Nodes by type:
-  bucket               1
-  database             1
-  dns_record           1
-  network              1
-  subnet               1
-  vm                   1
-
-Edges by type:
-  connects_to          3
-  depends_on           5
-```
-
-List nodes with filters:
+## Graph Queries
 
 ```bash
-aib graph nodes                          # all nodes
-aib graph nodes --type=vm                # only VMs
-aib graph nodes --source=terraform       # only from Terraform
-aib graph nodes --provider=google        # only GCP resources
+aib graph show                             # summary (node/edge counts by type)
+aib graph nodes                            # list all nodes
+aib graph nodes --type=vm --source=terraform --provider=google
+aib graph edges                            # list all edges
+aib graph edges --type=depends_on --from=tf:vm:web-prod-1
+aib graph neighbors tf:vm:web-prod-1       # direct neighbors
+aib graph path <from-id> <to-id>           # shortest path
+aib graph deps <node-id> --depth=10        # downstream dependencies
+aib graph export --format=json             # also: dot, mermaid
+aib graph prune --stale-days=30            # remove stale nodes
 ```
 
-List edges:
+## Analysis
 
-```bash
-aib graph edges                          # all edges
-aib graph edges --type=depends_on        # only dependency edges
-aib graph edges --from=tf:vm:web-prod-1  # edges from a specific node
-```
-
-Show neighbors of a node:
-
-```bash
-aib graph neighbors tf:vm:web-prod-1
-```
-
-Export the graph:
-
-```bash
-aib graph export --format=json           # JSON (default)
-aib graph export --format=dot            # Graphviz DOT
-aib graph export --format=mermaid        # Mermaid diagram
-```
-
-### Blast Radius Analysis
-
-Analyze what breaks if a node fails:
+### Blast Radius
 
 ```
 $ aib impact node tf:network:prod-vpc
@@ -408,252 +140,103 @@ Impact Analysis: tf:network:prod-vpc
    └── [depends_on] tf:database:cloudsql-prod (database)
 ```
 
-### Graph Analysis
+### Cycles, SPOF, Orphans
 
-Detect structural issues in your infrastructure graph:
-
+```bash
+aib graph cycles                           # circular dependencies
+aib graph spof --min-affected=3 --limit=10 # single points of failure (by blast radius)
+aib graph orphans                          # nodes with no edges
 ```
-$ aib graph cycles
-Circular Dependencies
-  Cycle 1: A → B → C → A
-
-  Found 1 circular dependency chain(s)
-```
-
-```
-$ aib graph spof --min-affected=2
-Single Points of Failure
-  RANK  ID                      NAME       TYPE      AFFECTED
-  1     tf:network:prod-vpc     prod-vpc   network   4
-
-  Found 1 single point(s) of failure (min affected: 2)
-```
-
-```
-$ aib graph orphans
-Orphan Nodes (no connections)
-  ID                          NAME             TYPE     SOURCE
-  tf:bucket:myproj-assets     myproj-assets    bucket   terraform
-
-  Found 1 orphan node(s)
-```
-
-**Cycles** indicate circular dependencies that may cause deployment ordering issues. **Single points of failure** are nodes with the highest blast radius — if they fail, many other nodes are affected. **Orphans** are nodes with zero edges, which may indicate stale or misconfigured resources.
 
 ### Drift Detection
 
-Every scan automatically compares the parsed results against the current database state and reports what changed. This runs transparently — no extra flags or configuration needed:
+Every scan automatically compares results against the current database and reports changes. Drift is source-scoped (a Terraform scan won't flag Kubernetes nodes as removed).
 
 ```
-$ aib scan cloudformation template.yaml
-Scanning CloudFormation templates across 1 path(s)...
-Discovered 5 nodes, 5 edges
-Drift: (initial scan — all assets are new)
-
-$ aib scan cloudformation template.yaml
-Scanning CloudFormation templates across 1 path(s)...
-Discovered 5 nodes, 5 edges
-No drift detected
-
 $ aib scan cloudformation template_v2.yaml
-Scanning CloudFormation templates across 1 path(s)...
 Discovered 5 nodes, 5 edges
 Drift: 1 added, 1 removed, 1 modified nodes; 1 added, 0 removed edges
 ```
 
-Drift is **source-scoped**: a Terraform scan only compares against existing Terraform nodes, so it won't flag Kubernetes resources as removed. Drift summaries are stored per scan and accessible via the API:
+Drift details are stored per scan: `GET /api/v1/scans/{id}/diff`.
+
+### Certificates
 
 ```bash
-# Get drift details for a specific scan
-curl http://localhost:8080/api/v1/scans/3/diff
+aib certs probe example.com:443            # probe and track a TLS endpoint
+aib certs list                             # all tracked certificates
+aib certs expiring --days=30               # expiring within threshold
+aib certs check                            # re-probe all known endpoints
 ```
 
-```json
-{
-  "nodes_added": [{"id": "cfn:database:MyDatabase", "name": "MyDatabase", "type": "database"}],
-  "nodes_removed": [{"id": "cfn:bucket:MyBucket", "name": "MyBucket", "type": "bucket"}],
-  "nodes_modified": [{"id": "cfn:vm:MyInstance", "name": "MyInstance", "changes": ["metadata.InstanceType"]}],
-  "edges_added": [{"id": "cfn:database:MyDatabase->depends_on->cfn:firewall_rule:MySecurityGroup", ...}],
-  "edges_removed": [{"id": "cfn:vm:MyInstance->depends_on->cfn:bucket:MyBucket", ...}],
-  "is_initial": false
-}
-```
+When running `aib serve`, certificates are probed automatically on a schedule (configurable via `certs.probe_interval`).
 
-### Certificate Management
-
-Probe a TLS endpoint and track the certificate:
+## Web UI & API
 
 ```bash
-aib certs probe example.com:443
+aib serve                                  # default :8080
+aib serve --listen=:9090                   # custom port
+aib serve --read-only                      # disable scan triggers
 ```
 
-List all tracked certificates:
+The web UI provides interactive graph visualization with search, type/source filtering, blast radius highlighting, and focus modes. API docs are available at `/api/docs` (Swagger UI).
 
-```bash
-aib certs list
-```
-
-Show certificates expiring within a threshold:
-
-```bash
-aib certs expiring --days=30
-```
-
-Re-probe all known endpoints discovered from the graph:
-
-```bash
-aib certs check
-```
-
-#### Automatic Certificate Probing
-
-When running `aib serve`, certificates are probed automatically on a schedule. The interval is configured via `certs.probe_interval` (default: `6h`):
-
-```yaml
-certs:
-  probe_enabled: true
-  probe_interval: "6h"    # Go duration: 6h, 30m, 1h30m
-  alert_thresholds: [90, 60, 30, 14, 7, 1]
-```
-
-The scheduler discovers TLS endpoints from the graph (ingresses, load balancers, DNS records), probes them, and sends alerts via configured backends (webhook, stdout) when certificates are expiring.
-
-### Live Kubernetes Cluster Scanning
-
-Scan a running Kubernetes cluster directly via `kubectl`:
-
-```bash
-# Scan all non-system namespaces using default kubeconfig
-aib scan k8s --live
-
-# Specify kubeconfig and context
-aib scan k8s --live --kubeconfig=~/.kube/config --context=prod-cluster
-
-# Scan specific namespaces only
-aib scan k8s --live --namespace=default --namespace=app
-```
-
-This requires `kubectl` to be installed and configured with access to the target cluster.
-
-### Web UI and API
-
-Start the embedded web server:
-
-```bash
-aib serve                        # default :8080
-aib serve --listen=:9090         # custom port
-aib serve --read-only            # disable scan triggers via API
-```
-
-Interactive API documentation is available at `/api/docs` (Swagger UI) and the OpenAPI 3.0 spec at `/api/v1/openapi.json`.
-
-The web UI provides an interactive graph visualization with:
-- Distinct node shapes per asset category (rectangles for compute, diamonds for data, hexagons for networking, etc.)
-- Search, filter by type/source, and blast radius highlighting
-- A "Scan Now" button to trigger scans from the browser
-
-#### API Authentication
-
-Protect API endpoints with bearer token authentication:
-
-```yaml
-server:
-  api_token: "${AIB_API_TOKEN}"
-```
-
-Or via environment variable:
-
-```bash
-AIB_SERVER_API_TOKEN=your-secret-token aib serve
-```
-
-Authenticated requests require the `Authorization` header:
-
-```bash
-curl -H "Authorization: Bearer your-secret-token" http://localhost:8080/api/v1/stats
-```
-
-Authentication applies to `/api/*` routes only. The web UI, static assets, and `/healthz` are always accessible.
-
-#### REST API Endpoints
+### API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/healthz` | Health check |
+| `GET` | `/metrics` | Prometheus metrics (no auth) |
 | `GET` | `/api/v1/graph` | Full graph (nodes + edges) |
 | `GET` | `/api/v1/graph/nodes` | List nodes (`?type=`, `?source=`, `?provider=`) |
-| `GET` | `/api/v1/graph/nodes/:id` | Single node details |
+| `GET` | `/api/v1/graph/nodes/{id}` | Single node details |
 | `GET` | `/api/v1/graph/edges` | List edges (`?type=`, `?from=`, `?to=`) |
-| `GET` | `/api/v1/graph/analysis/cycles` | Detect circular dependencies |
+| `GET` | `/api/v1/graph/shortest-path` | Shortest path (`?from=`, `?to=`) |
+| `GET` | `/api/v1/graph/dependency-chain/{nodeId}` | Downstream dependencies (`?depth=`) |
+| `GET` | `/api/v1/graph/analysis/cycles` | Circular dependencies |
 | `GET` | `/api/v1/graph/analysis/spof` | Single points of failure (`?min_affected=`, `?limit=`) |
-| `GET` | `/api/v1/graph/analysis/orphans` | Orphan nodes (no edges) |
-| `GET` | `/api/v1/impact/:nodeId` | Blast radius for a node |
+| `GET` | `/api/v1/graph/analysis/orphans` | Orphan nodes |
+| `GET` | `/api/v1/impact/{nodeId}` | Blast radius |
 | `GET` | `/api/v1/plan/impact` | Terraform plan impact analysis |
 | `GET` | `/api/v1/certs` | All tracked certificates |
 | `GET` | `/api/v1/certs/expiring` | Expiring certs (`?days=30`) |
 | `GET` | `/api/v1/stats` | Summary statistics |
 | `GET` | `/api/v1/scans` | Scan history |
-| `GET` | `/api/v1/scans/:id/diff` | Drift summary for a scan |
+| `GET` | `/api/v1/scans/{id}/diff` | Drift summary for a scan |
 | `GET` | `/api/v1/scan/status` | Check if a scan is running |
-| `POST` | `/api/v1/scan` | Trigger a scan |
-| `GET` | `/api/v1/openapi.json` | OpenAPI 3.0 specification |
-| `GET` | `/api/docs` | Interactive Swagger UI documentation |
+| `POST` | `/api/v1/scan` | Trigger a scan (JSON body) |
+| `GET` | `/api/v1/export/json` | Export graph as JSON |
+| `GET` | `/api/v1/export/dot` | Export graph as Graphviz DOT |
+| `GET` | `/api/v1/export/mermaid` | Export graph as Mermaid |
+| `GET` | `/api/v1/openapi.json` | OpenAPI 3.0 spec |
+| `GET` | `/api/docs` | Swagger UI |
 
-#### Triggering Scans via API
+### Triggering Scans via API
 
-`POST /api/v1/scan` with a JSON body:
-
-```json
-{
-  "source": "all"
-}
+```bash
+curl -X POST http://localhost:8080/api/v1/scan \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"source": "terraform", "paths": ["/opt/infra/terraform"]}'
 ```
 
-Valid sources: `terraform`, `terraform-plan`, `kubernetes`, `kubernetes-live`, `ansible`, `compose`, `cloudformation`, `all`. For file-based sources, include `paths`:
+Valid sources: `terraform`, `terraform-plan`, `kubernetes`, `kubernetes-live`, `ansible`, `compose`, `cloudformation`, `pulumi`, `all`.
 
-```json
-{
-  "source": "terraform",
-  "paths": ["/absolute/path/to/terraform"]
-}
+### Authentication & Security
+
+Protect API endpoints with bearer token auth:
+
+```yaml
+server:
+  api_token: "${AIB_API_TOKEN}"   # or: AIB_SERVER_API_TOKEN=... aib serve
 ```
 
-Returns `202 Accepted` with the scan ID:
+Auth applies to `/api/*` routes only. The web UI, static assets, `/healthz`, and `/metrics` are always accessible.
 
-```json
-{
-  "status": "scan triggered",
-  "scan_id": 5
-}
-```
-
-Check scan progress with `GET /api/v1/scan/status`:
-
-```json
-{
-  "running": true
-}
-```
-
-#### Security
-
-> **Warning:** AIB is designed for trusted internal networks. Do **not** expose
-> to the public internet without a reverse proxy, TLS, and authentication.
-
-The server includes the following security features:
-
-- **Read-only by default**: Server starts in read-only mode. Set `read_only: false` with an `api_token` to enable scan triggers via API
-- **Scan path allowlist**: Set `scan.allowed_paths` to restrict which directories the API can scan
-- **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`, `Referrer-Policy` on all responses
-- **Rate limiting**: API routes are limited to 10 requests/sec (burst 20) per client IP. Returns `429 Too Many Requests` when exceeded
-- **Request body limits**: POST/PUT/PATCH bodies are capped at 1 MB
-- **Path validation**: The scan trigger API rejects paths containing `..` (directory traversal) and requires absolute paths
-- **CORS**: Disabled by default. Set `server.cors_origin` to enable cross-origin API access
-- **Authentication**: Optional bearer token auth on all `/api/*` routes (see above)
+AIB is designed for trusted internal networks. The server includes security headers, rate limiting (10 req/s per IP), request body limits (1 MB), path traversal protection, and a scan path allowlist (`scan.allowed_paths`). Do not expose to the public internet without a reverse proxy and TLS.
 
 ## Configuration
 
-AIB works out of the box with sensible defaults. For customization, create an `aib.yaml` in the current directory or `~/.aib/`:
+AIB works out of the box with sensible defaults. For customization, create `aib.yaml` in the current directory or `~/.aib/`:
 
 ```yaml
 storage:
@@ -661,12 +244,10 @@ storage:
   memgraph:
     enabled: false
     uri: "bolt://localhost:7687"
-    username: ""
-    password: ""
 
 certs:
   probe_enabled: true
-  probe_interval: "6h"                 # Go duration format
+  probe_interval: "6h"
   alert_thresholds: [90, 60, 30, 14, 7, 1]
 
 alerts:
@@ -680,162 +261,38 @@ alerts:
 
 server:
   listen: ":8080"
-  read_only: true                      # set to false + api_token to enable scan triggers
-  api_token: "${AIB_API_TOKEN}"        # bearer token for /api/* routes
-  cors_origin: ""                      # CORS origin ("*" for any)
+  read_only: true
+  api_token: "${AIB_API_TOKEN}"
+  cors_origin: ""
 
 scan:
-  schedule: "4h"                       # periodic scan interval (Go duration)
-  on_startup: true                     # scan all configured sources on startup
-  allowed_paths:                       # restrict API-triggered scans to these dirs
+  schedule: "4h"
+  on_startup: true
+  allowed_paths:
     - "/opt/infra/terraform"
     - "/opt/infra/k8s"
 ```
 
-Sensitive fields (`api_token`, `password`, webhook `url` and `headers`) support `${ENV_VAR}` expansion.
-
-All settings can also be set via environment variables with the `AIB_` prefix:
-
-```bash
-AIB_STORAGE_PATH=/data/aib.db
-AIB_STORAGE_MEMGRAPH_ENABLED=true
-AIB_STORAGE_MEMGRAPH_URI=bolt://memgraph:7687
-AIB_SERVER_LISTEN=:9090
-```
+All settings support `${ENV_VAR}` expansion and can be set via environment variables with the `AIB_` prefix (e.g. `AIB_STORAGE_PATH`, `AIB_SERVER_LISTEN`). Logging is controlled via `--log-format` (text/json) and `--log-level` (debug/info/warn/error) flags. Shell completions: `aib completion [bash|zsh|fish|powershell]`.
 
 See [`configs/aib.yaml.example`](configs/aib.yaml.example) for the full reference.
 
-## Memgraph Integration
+## Memgraph
 
-AIB uses a **hybrid storage model**: SQLite is the persistent source of truth, and [Memgraph](https://github.com/memgraph/memgraph) is an optional graph traversal engine for faster blast radius analysis, shortest path, and neighbor queries.
-
-### Setup
-
-1. Start Memgraph:
+AIB uses SQLite as the persistent source of truth. Optionally, [Memgraph](https://github.com/memgraph/memgraph) can be added as a graph traversal engine for faster blast radius, shortest path, and neighbor queries. If Memgraph is unavailable, all queries fall back to the local BFS engine transparently.
 
 ```bash
+# Start Memgraph
 docker run -p 7687:7687 memgraph/memgraph-mage
-```
 
-2. Enable in config (`aib.yaml` or environment):
+# Enable in config
+# storage.memgraph.enabled: true, uri: "bolt://localhost:7687"
 
-```yaml
-storage:
-  memgraph:
-    enabled: true
-    uri: "bolt://localhost:7687"
-```
-
-3. Sync existing data to Memgraph:
-
-```bash
+# Sync existing data
 aib graph sync
 ```
 
-### How it works
-
-- **Writes** go to both SQLite and Memgraph (via `SyncedStore` decorator)
-- **Graph traversal queries** (blast radius, neighbors, shortest path) use Memgraph's Cypher engine
-- **If Memgraph is unavailable**, all queries fall back to the local BFS engine transparently
-- **SQLite stays the source of truth** — Memgraph can be rebuilt at any time with `aib graph sync`
-
-### Docker Compose (with Memgraph)
-
-```bash
-docker compose -f deploy/docker-compose.yml up --build
-```
-
-This starts both AIB and Memgraph, with AIB automatically configured to use Memgraph for graph queries.
-
-## Supported Resources
-
-### Terraform
-
-AIB maps Terraform resource types to asset types:
-
-| Provider | Resources | Asset Type |
-|----------|-----------|------------|
-| GCP | `google_compute_instance` | `vm` |
-| GCP | `google_sql_database_instance`, `google_redis_instance` | `database` |
-| GCP | `google_compute_network` | `network` |
-| GCP | `google_compute_subnetwork` | `subnet` |
-| GCP | `google_compute_firewall` | `firewall_rule` |
-| GCP | `google_dns_record_set` | `dns_record` |
-| GCP | `google_storage_bucket` | `bucket` |
-| GCP | `google_compute_forwarding_rule` | `load_balancer` |
-| AWS | `aws_instance` | `vm` |
-| AWS | `aws_db_instance`, `aws_rds_cluster` | `database` |
-| AWS | `aws_vpc` | `network` |
-| AWS | `aws_subnet` | `subnet` |
-| AWS | `aws_security_group` | `firewall_rule` |
-| AWS | `aws_route53_record` | `dns_record` |
-| AWS | `aws_s3_bucket` | `bucket` |
-| AWS | `aws_lb`, `aws_alb`, `aws_elb` | `load_balancer` |
-| Azure | `azurerm_virtual_machine` | `vm` |
-| Azure | `azurerm_sql_server`, `azurerm_postgresql_server` | `database` |
-| Azure | `azurerm_virtual_network` | `network` |
-| Cloudflare | `cloudflare_record` | `dns_record` |
-| TLS | `tls_self_signed_cert`, `acme_certificate` | `certificate` |
-
-Edges are created from `dependencies` in `.tfstate` and from attribute references (network, subnetwork, vpc_id). When scanning multiple state files, cross-state edges are resolved automatically.
-
-### Kubernetes
-
-| Resource Kind | Asset Type | Edges Created |
-|--------------|------------|---------------|
-| `Deployment`, `StatefulSet`, `DaemonSet` | `pod` | `member_of` Service, `mounts_secret`, `depends_on` ConfigMap |
-| `Service` | `service` | matched to Pods via label selector |
-| `Ingress` | `ingress` | `routes_to` Service, `terminates_tls` Secret |
-| `Secret` | `secret` | referenced by workloads and ingresses |
-| `ConfigMap` | `secret` | referenced by workloads |
-| `Namespace` | `namespace` | — |
-| `Certificate` (cert-manager) | `certificate` | `depends_on` Secret |
-
-Helm charts are supported via `--helm` flag (shells out to `helm template`).
-
-### Ansible
-
-| Source | Discovered Asset | Asset Type |
-|--------|-----------------|------------|
-| Inventory host | Host machine | `vm` |
-| `docker_container` task | Docker container | `container` |
-| `service` task | System service | `service` |
-
-Edges (`managed_by`) are created from playbook task analysis, linking containers and services to the hosts they run on.
-
-### CloudFormation
-
-| Resource Type | Asset Type |
-|--------------|------------|
-| `AWS::EC2::Instance` | `vm` |
-| `AWS::RDS::DBInstance`, `AWS::RDS::DBCluster` | `database` |
-| `AWS::EC2::VPC` | `network` |
-| `AWS::EC2::Subnet` | `subnet` |
-| `AWS::EC2::SecurityGroup` | `firewall_rule` |
-| `AWS::S3::Bucket` | `bucket` |
-| `AWS::Lambda::Function` | `function` |
-| `AWS::ECS::Service` | `service` |
-| `AWS::ElasticLoadBalancingV2::LoadBalancer` | `load_balancer` |
-| `AWS::IAM::Role`, `AWS::IAM::User` | `service_account` |
-| `AWS::IAM::Policy` | `iam_policy` |
-| `AWS::KMS::Key` | `kms_key` |
-| `AWS::SecretsManager::Secret` | `secret` |
-| `AWS::SQS::Queue` | `queue` |
-| `AWS::SNS::Topic` | `pubsub` |
-| `AWS::Route53::RecordSet` | `dns_record` |
-| `AWS::CloudFront::Distribution` | `cdn` |
-| `AWS::DynamoDB::Table` | `nosql_database` |
-| `AWS::CertificateManager::Certificate` | `certificate` |
-
-Edges are created from `DependsOn`, `Ref`, `Fn::GetAtt` intrinsic functions, and property references (`VpcId`, `SubnetId`, `SecurityGroupIds`). When scanning multiple templates, cross-file edges are resolved automatically.
-
-## Known Limitations
-
-- **Not designed for public internet exposure** — intended for trusted internal networks behind a reverse proxy with TLS
-- **Single-node only** — no high availability or clustering support
-- **No RBAC** — a single shared bearer token protects all API routes
-- **SQLite write serialization** — under heavy concurrent write loads, SQLite's single-writer model may become a bottleneck
-- **Shell-out dependencies** — `terraform`, `helm`, and `kubectl` must be installed for remote state, Helm chart, and live cluster scanning respectively
+Writes go to both SQLite and Memgraph via the `SyncedStore` decorator. Memgraph can be rebuilt at any time with `aib graph sync`. The `deploy/docker-compose.yml` includes both AIB and Memgraph pre-configured.
 
 ## Development
 
