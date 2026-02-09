@@ -690,6 +690,106 @@ func TestRealisticPlan_SourceFile(t *testing.T) {
 	}
 }
 
+func TestPlanParseMulti_NonexistentPath(t *testing.T) {
+	p := NewPlanParser()
+	result, err := p.ParseMulti(context.Background(), []string{"/nonexistent/plan.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("expected warnings for nonexistent path")
+	}
+}
+
+func TestPlanParseMulti_InvalidJSON(t *testing.T) {
+	// Create a temp JSON file with invalid content
+	dir := t.TempDir()
+	badFile := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(badFile, []byte("not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewPlanParser()
+	result, err := p.ParseMulti(context.Background(), []string{badFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("expected warnings for invalid JSON")
+	}
+}
+
+func TestPlanParser_Supported_NonJSON(t *testing.T) {
+	dir := t.TempDir()
+	txtFile := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(txtFile, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	p := NewPlanParser()
+	if p.Supported(txtFile) {
+		t.Error("expected false for non-json file")
+	}
+}
+
+func TestPlanParser_Supported_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	jsonFile := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(jsonFile, []byte("not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	p := NewPlanParser()
+	if p.Supported(jsonFile) {
+		t.Error("expected false for invalid json")
+	}
+}
+
+func TestPlanParser_Supported_NoFormatVersion(t *testing.T) {
+	dir := t.TempDir()
+	jsonFile := filepath.Join(dir, "test.json")
+	if err := os.WriteFile(jsonFile, []byte(`{"key": "value"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	p := NewPlanParser()
+	if p.Supported(jsonFile) {
+		t.Error("expected false for JSON without format_version")
+	}
+}
+
+func TestDeterminePlanAction_UnknownSingle(t *testing.T) {
+	got := determinePlanAction([]string{"unknown"})
+	// Unknown single actions fall through the switch and return "" via len==1 branch
+	// then fall to len==2 check, then fall to actions[0]
+	if got != "unknown" {
+		t.Errorf("determinePlanAction([unknown]) = %q, want \"unknown\"", got)
+	}
+}
+
+func TestParsePlanBytes_NullAfterAndBefore(t *testing.T) {
+	// When both after and before are null, attrs should default to empty map
+	data, err := os.ReadFile("testdata/plan_null_attrs.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ParsePlanBytes(data, "testdata/plan_null_attrs.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The node should still be created, using the resource name as fallback
+	if len(result.Nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1", len(result.Nodes))
+	}
+	if result.Nodes[0].Name != "null_attrs" {
+		t.Errorf("name = %q, want null_attrs", result.Nodes[0].Name)
+	}
+}
+
+func TestDeterminePlanAction_ThreeActions(t *testing.T) {
+	got := determinePlanAction([]string{"delete", "create", "update"})
+	if got != "delete" {
+		t.Errorf("determinePlanAction([delete,create,update]) = %q, want \"delete\"", got)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }

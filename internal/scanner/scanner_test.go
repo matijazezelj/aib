@@ -328,3 +328,191 @@ func TestRunSync_TerraformPlanMultiFile(t *testing.T) {
 		t.Error("missing cross-file edge: api-service → prod-vpc")
 	}
 }
+
+func TestRunSync_Kubernetes(t *testing.T) {
+	sc, _ := newTestScanner(t)
+
+	testdata, err := filepath.Abs("../parser/kubernetes/testdata/manifests.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(context.Background(), ScanRequest{
+		Source: "kubernetes",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound == 0 {
+		t.Error("expected nodes from kubernetes scan")
+	}
+}
+
+func TestRunSync_CloudFormation(t *testing.T) {
+	sc, _ := newTestScanner(t)
+
+	testdata, err := filepath.Abs("../parser/cloudformation/testdata/simple.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(context.Background(), ScanRequest{
+		Source: "cloudformation",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound == 0 {
+		t.Error("expected nodes from cloudformation scan")
+	}
+}
+
+func TestRunSync_Pulumi(t *testing.T) {
+	sc, _ := newTestScanner(t)
+
+	testdata, err := filepath.Abs("../parser/pulumi/testdata/simple.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(context.Background(), ScanRequest{
+		Source: "pulumi",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound == 0 {
+		t.Error("expected nodes from pulumi scan")
+	}
+}
+
+func TestRunSync_Compose(t *testing.T) {
+	sc, _ := newTestScanner(t)
+
+	testdata, err := filepath.Abs("../parser/compose/testdata/docker-compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(context.Background(), ScanRequest{
+		Source: "compose",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound == 0 {
+		t.Error("expected nodes from compose scan")
+	}
+}
+
+func TestRunSync_Ansible(t *testing.T) {
+	sc, _ := newTestScanner(t)
+
+	testdata, err := filepath.Abs("../parser/ansible/testdata/inventory.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(testdata); os.IsNotExist(err) {
+		t.Skipf("testdata not found: %s", testdata)
+	}
+
+	result := sc.RunSync(context.Background(), ScanRequest{
+		Source: "ansible",
+		Paths:  []string{testdata},
+	})
+
+	if result.Error != nil {
+		t.Fatalf("RunSync error: %v", result.Error)
+	}
+	if result.NodesFound == 0 {
+		t.Error("expected nodes from ansible scan")
+	}
+}
+
+func TestRunAllConfigured(t *testing.T) {
+	store := newTestStore(t)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	tfData, err := filepath.Abs("../parser/terraform/testdata/sample.tfstate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfnData, err := filepath.Abs("../parser/cloudformation/testdata/simple.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Sources: config.SourcesConfig{
+			Terraform: []config.TerraformSource{
+				{StateFile: tfData},
+			},
+			CloudFormation: []config.CloudFormationSource{
+				{Path: cfnData},
+			},
+		},
+	}
+
+	sc := New(store, cfg, logger)
+	results := sc.RunAllConfigured(context.Background())
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	for i, r := range results {
+		if r.Error != nil {
+			t.Errorf("result[%d] error: %v", i, r.Error)
+		}
+		if r.NodesFound == 0 {
+			t.Errorf("result[%d] found 0 nodes", i)
+		}
+	}
+}
+
+func TestScheduler_StartStop(t *testing.T) {
+	sc, _ := newTestScanner(t)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	sched, err := NewScheduler(sc, "1m", logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sched.Start(ctx)
+
+	// Immediately stop — should not deadlock
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		sched.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// ok
+	case <-time.After(5 * time.Second):
+		t.Fatal("Scheduler.Stop() deadlocked")
+	}
+}

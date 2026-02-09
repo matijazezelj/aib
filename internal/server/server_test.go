@@ -217,6 +217,15 @@ func TestValidateScanRequest(t *testing.T) {
 			req:     scanTriggerRequest{ValuesFile: "../etc/passwd"},
 			wantErr: true,
 		},
+		{
+			name:    "relative playbooks",
+			req:     scanTriggerRequest{Playbooks: "relative/playbook"},
+			wantErr: true,
+		},
+		{
+			name: "valid playbooks",
+			req:  scanTriggerRequest{Playbooks: "/home/user/playbooks"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -225,6 +234,39 @@ func TestValidateScanRequest(t *testing.T) {
 				t.Errorf("validateScanRequest() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRateLimiter_NonAPIPath(t *testing.T) {
+	s := &Server{done: make(chan struct{})}
+	handler := s.rateLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Non-API paths should bypass rate limiting
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (non-API bypasses rate limiter)", rr.Code)
+	}
+}
+
+func TestRateLimiter_EmptyRemoteAddr(t *testing.T) {
+	s := &Server{done: make(chan struct{})}
+	handler := s.rateLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	req.RemoteAddr = "127.0.0.1" // no port
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
 	}
 }
 

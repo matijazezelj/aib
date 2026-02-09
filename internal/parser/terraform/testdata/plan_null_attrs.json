@@ -1,0 +1,19 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.5.0",
+  "resource_changes": [
+    {
+      "address": "aws_instance.null_attrs",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "null_attrs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": null,
+        "after_unknown": {}
+      }
+    }
+  ]
+}

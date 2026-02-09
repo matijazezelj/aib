@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -730,5 +731,772 @@ func TestDBStatsCmd(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "Nodes: 2") {
 		t.Errorf("expected 'Nodes: 2' in output, got: %s", output)
+	}
+}
+
+// --- certs commands ---
+
+func TestCertsListCmd_Empty(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	err := runCmd(app, app.certsCmd(), "certs", "list")
+	if err != nil {
+		t.Fatalf("certs list error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No certificates found") {
+		t.Errorf("expected 'No certificates found' in output, got: %s", output)
+	}
+}
+
+func TestCertsExpiringCmd_Empty(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	err := runCmd(app, app.certsCmd(), "certs", "expiring")
+	if err != nil {
+		t.Fatalf("certs expiring error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No certificates expiring") {
+		t.Errorf("expected 'No certificates expiring' in output, got: %s", output)
+	}
+}
+
+// --- more scan commands ---
+
+func TestScanAnsibleCmd(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	fixture, err := filepath.Abs("../../testdata/ansible/inventory.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = runCmd(app, app.scanCmd(), "scan", "ansible", fixture)
+	if err != nil {
+		t.Fatalf("scan ansible error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Discovered") {
+		t.Errorf("expected 'Discovered' in output, got: %s", output)
+	}
+}
+
+func TestScanK8sCmd(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	fixture, err := filepath.Abs("../../testdata/kubernetes/manifests.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = runCmd(app, app.scanCmd(), "scan", "kubernetes", fixture)
+	if err != nil {
+		t.Fatalf("scan kubernetes error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Discovered") {
+		t.Errorf("expected 'Discovered' in output, got: %s", output)
+	}
+}
+
+func TestScanComposeCmd(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	fixture, err := filepath.Abs("../../testdata/compose/docker-compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = runCmd(app, app.scanCmd(), "scan", "compose", fixture)
+	if err != nil {
+		t.Fatalf("scan compose error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Discovered") {
+		t.Errorf("expected 'Discovered' in output, got: %s", output)
+	}
+}
+
+func TestScanTerraformPlanCmd(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	fixture, err := filepath.Abs("../../internal/parser/terraform/testdata/plan_create.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = runCmd(app, app.scanCmd(), "scan", "terraform-plan", fixture)
+	if err != nil {
+		t.Fatalf("scan terraform-plan error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Discovered") {
+		t.Errorf("expected 'Discovered' in output, got: %s", output)
+	}
+}
+
+// --- graph export mermaid ---
+
+func TestGraphExportCmd_Mermaid(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphExportCmd(), "export", "--format", "mermaid")
+	if err != nil {
+		t.Fatalf("graph export mermaid error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "graph") {
+		t.Errorf("export mermaid should contain 'graph', got: %s", output)
+	}
+}
+
+// --- db backup ---
+
+func TestDBBackupCmd(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	err := runCmd(app, app.dbCmd(), "db", "backup", backupPath)
+	if err != nil {
+		t.Fatalf("db backup error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Backed up") {
+		t.Errorf("expected 'Backed up' in output, got: %s", output)
+	}
+
+	// Verify backup file exists
+	info, err := os.Stat(backupPath)
+	if err != nil {
+		t.Fatalf("backup file not found: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Error("backup file is empty")
+	}
+}
+
+// --- graph prune confirmation ---
+
+func TestGraphPruneCmd_Confirm_Yes(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	app.in = strings.NewReader("y\n")
+	err := runCmd(app, app.graphPruneCmd(), "prune", "--source", "terraform")
+	if err != nil {
+		t.Fatalf("graph prune error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Deleted") {
+		t.Errorf("expected 'Deleted' in output, got: %s", output)
+	}
+}
+
+func TestGraphPruneCmd_Confirm_No(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	app.in = strings.NewReader("n\n")
+	err := runCmd(app, app.graphPruneCmd(), "prune", "--source", "terraform")
+	if err != nil {
+		t.Fatalf("graph prune error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Aborted") {
+		t.Errorf("expected 'Aborted' in output, got: %s", output)
+	}
+}
+
+func TestGraphPruneCmd_NoMatchingNodes(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphPruneCmd(), "prune", "--source", "nonexistent-source")
+	if err != nil {
+		t.Fatalf("graph prune error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No matching nodes found") {
+		t.Errorf("expected 'No matching nodes found' in output, got: %s", output)
+	}
+}
+
+func TestGraphExportCmd_InvalidFormat(t *testing.T) {
+	app, _ := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphExportCmd(), "export", "--format", "invalid")
+	if err == nil {
+		t.Error("expected error for invalid format")
+	}
+}
+
+func TestDBBackupCmd_Overwrite_No(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	// Create file first
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, []byte("existing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app.in = strings.NewReader("n\n")
+	err := runCmd(app, app.dbCmd(), "db", "backup", backupPath)
+	if err != nil {
+		t.Fatalf("db backup error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Aborted") {
+		t.Errorf("expected 'Aborted' in output, got: %s", output)
+	}
+}
+
+func TestDBBackupCmd_Overwrite_Yes(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	// Create file first
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, []byte("existing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app.in = strings.NewReader("y\n")
+	err := runCmd(app, app.dbCmd(), "db", "backup", backupPath)
+	if err != nil {
+		t.Fatalf("db backup error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Backed up") {
+		t.Errorf("expected 'Backed up' in output, got: %s", output)
+	}
+}
+
+func TestScanTerraformPlanCmd_Realistic(t *testing.T) {
+	app, buf := newTestApp(t)
+
+	fixture, err := filepath.Abs("../../internal/parser/terraform/testdata/plan_realistic.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = runCmd(app, app.scanCmd(), "scan", "terraform-plan", fixture)
+	if err != nil {
+		t.Fatalf("scan terraform-plan error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "11 nodes") {
+		t.Errorf("expected '11 nodes' in output, got: %s", output)
+	}
+}
+
+func TestPrintScanResult_WithDrift(t *testing.T) {
+	app, buf := newTestApp(t)
+	app.printScanResult(scanner.ScanResult{
+		ScanID:     1,
+		NodesFound: 5,
+		EdgesFound: 3,
+		Drift: &graph.DriftSummary{
+			IsInitial: true,
+		},
+	})
+
+	output := buf.String()
+	if !strings.Contains(output, "initial scan") {
+		t.Errorf("expected 'initial scan' in output, got: %s", output)
+	}
+}
+
+func TestPrintScanResult_WithDriftChanges(t *testing.T) {
+	app, buf := newTestApp(t)
+	app.printScanResult(scanner.ScanResult{
+		ScanID:     1,
+		NodesFound: 5,
+		EdgesFound: 3,
+		Drift: &graph.DriftSummary{
+			NodesAdded: []graph.NodeChange{{ID: "new:node"}},
+		},
+	})
+
+	output := buf.String()
+	if !strings.Contains(output, "Drift:") {
+		t.Errorf("expected 'Drift:' in output, got: %s", output)
+	}
+}
+
+func TestPrintScanResult_NoDrift(t *testing.T) {
+	app, buf := newTestApp(t)
+	app.printScanResult(scanner.ScanResult{
+		ScanID:     1,
+		NodesFound: 5,
+		EdgesFound: 3,
+		Drift:      &graph.DriftSummary{},
+	})
+
+	output := buf.String()
+	if !strings.Contains(output, "No drift detected") {
+		t.Errorf("expected 'No drift detected' in output, got: %s", output)
+	}
+}
+
+func TestCertsListCmd_WithCerts(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	expires := now.Add(30 * 24 * time.Hour)
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "cert:test", Name: "test-cert", Type: models.AssetCertificate,
+		Source: "probe", Metadata: map[string]string{},
+		ExpiresAt: &expires, LastSeen: now, FirstSeen: now,
+	})
+	_ = store.Close()
+
+	err = runCmd(app, app.certsCmd(), "certs", "list")
+	if err != nil {
+		t.Fatalf("certs list error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "test-cert") {
+		t.Errorf("expected 'test-cert' in output, got: %s", output)
+	}
+}
+
+func TestCertsExpiringCmd_WithExpiring(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	expires := now.Add(10 * 24 * time.Hour)
+	_ = store.UpsertNode(ctx, models.Node{
+		ID: "cert:expiring", Name: "expiring-cert", Type: models.AssetCertificate,
+		Source: "probe", Metadata: map[string]string{},
+		ExpiresAt: &expires, LastSeen: now, FirstSeen: now,
+	})
+	_ = store.Close()
+
+	err = runCmd(app, app.certsCmd(), "certs", "expiring", "--days", "30")
+	if err != nil {
+		t.Fatalf("certs expiring error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "expiring-cert") {
+		t.Errorf("expected 'expiring-cert' in output, got: %s", output)
+	}
+}
+
+func TestGraphDepsCmd_NoDeps(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	// db:pg1 has no outgoing dependencies (it's the leaf)
+	err := runCmd(app, app.graphDepsCmd(), "deps", "db:pg1")
+	if err != nil {
+		t.Fatalf("graph deps error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No dependencies found") {
+		t.Errorf("expected 'No dependencies found' in output, got: %s", output)
+	}
+}
+
+func TestGraphCyclesCmd_WithCycle(t *testing.T) {
+	app, buf := newTestApp(t)
+	// Seed a 3-node cycle: A -> B -> C -> A
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	for _, id := range []string{"A", "B", "C"} {
+		_ = store.UpsertNode(ctx, models.Node{
+			ID: id, Name: id, Type: models.AssetVM,
+			Source: "tf", Metadata: map[string]string{},
+			LastSeen: now, FirstSeen: now,
+		})
+	}
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "A->B", FromID: "A", ToID: "B", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "B->C", FromID: "B", ToID: "C", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "C->A", FromID: "C", ToID: "A", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.Close()
+
+	err = runCmd(app, app.graphCyclesCmd(), "cycles")
+	if err != nil {
+		t.Fatalf("graph cycles error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "circular dependency") {
+		t.Errorf("expected 'circular dependency' in output, got: %s", output)
+	}
+}
+
+func TestGraphOrphansCmd_WithOrphans(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	// Create 3 nodes, only 2 connected
+	_ = store.UpsertNode(ctx, models.Node{ID: "A", Name: "A", Type: models.AssetVM, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "B", Name: "B", Type: models.AssetVM, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "C", Name: "C", Type: models.AssetVM, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "A->B", FromID: "A", ToID: "B", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.Close()
+
+	err = runCmd(app, app.graphOrphansCmd(), "orphans")
+	if err != nil {
+		t.Fatalf("graph orphans error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "orphan") {
+		t.Errorf("expected 'orphan' in output, got: %s", output)
+	}
+	if !strings.Contains(output, "C") {
+		t.Errorf("expected orphan node C in output, got: %s", output)
+	}
+}
+
+func TestGraphOrphansCmd_NoOrphans(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphOrphansCmd(), "orphans")
+	if err != nil {
+		t.Fatalf("graph orphans error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No orphan") {
+		t.Errorf("expected 'No orphan' in output, got: %s", output)
+	}
+}
+
+func TestGraphSPOFCmd_WithSPOF(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	// Create a hub that multiple nodes depend on
+	_ = store.UpsertNode(ctx, models.Node{ID: "hub", Name: "hub", Type: models.AssetNetwork, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("spoke-%d", i)
+		_ = store.UpsertNode(ctx, models.Node{ID: id, Name: id, Type: models.AssetVM, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+		_ = store.UpsertEdge(ctx, models.Edge{ID: id + "->hub", FromID: id, ToID: "hub", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	}
+	_ = store.Close()
+
+	err = runCmd(app, app.graphSPOFCmd(), "spof")
+	if err != nil {
+		t.Fatalf("graph spof error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "single point") {
+		t.Errorf("expected 'single point' in output, got: %s", output)
+	}
+}
+
+func TestGraphSPOFCmd_NoSPOF(t *testing.T) {
+	app, buf := newTestApp(t)
+	// Empty store — no nodes, no SPOF
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+
+	err = runCmd(app, app.graphSPOFCmd(), "spof")
+	if err != nil {
+		t.Fatalf("graph spof error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No single points of failure") {
+		t.Errorf("expected 'No single points of failure' in output, got: %s", output)
+	}
+}
+
+func TestScanK8sCmd_NoArgs(t *testing.T) {
+	app, _ := newTestApp(t)
+
+	err := runCmd(app, app.scanK8sCmd(), "kubernetes")
+	if err == nil {
+		t.Error("expected error when no path and no --live flag")
+	}
+}
+
+func TestImpactNodeCmd_WithWarnings(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	expires := now.Add(10 * 24 * time.Hour)
+
+	_ = store.UpsertNode(ctx, models.Node{ID: "lb:main", Name: "main-lb", Type: models.AssetLoadBalancer, Source: "tf", Provider: "aws", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertNode(ctx, models.Node{ID: "cert:expiring", Name: "expiring-cert", Type: models.AssetCertificate, Source: "tf", Provider: "tls", ExpiresAt: &expires, Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+	_ = store.UpsertEdge(ctx, models.Edge{ID: "cert->lb", FromID: "cert:expiring", ToID: "lb:main", Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+	_ = store.Close()
+
+	err = runCmd(app, app.impactNodeCmd(), "node", "lb:main")
+	if err != nil {
+		t.Fatalf("impact node error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Impact Analysis") {
+		t.Errorf("expected 'Impact Analysis' in output, got: %s", output)
+	}
+	if !strings.Contains(output, "expires") {
+		t.Errorf("expected 'expires' warning in output, got: %s", output)
+	}
+}
+
+func TestScanK8sCmd_LiveFlag(t *testing.T) {
+	app, _ := newTestApp(t)
+
+	// --live without a real cluster will fail, but it covers the live code path
+	err := runCmd(app, app.scanK8sCmd(), "kubernetes", "--live")
+	// We expect an error since there's no live cluster
+	if err == nil {
+		t.Log("scan k8s --live succeeded unexpectedly (maybe a cluster is available)")
+	}
+}
+
+func TestGraphSPOFCmd_WithLimit(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	// Create two hubs
+	for _, hub := range []string{"hub1", "hub2"} {
+		_ = store.UpsertNode(ctx, models.Node{ID: hub, Name: hub, Type: models.AssetNetwork, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+		for i := 0; i < 3; i++ {
+			id := fmt.Sprintf("%s-spoke-%d", hub, i)
+			_ = store.UpsertNode(ctx, models.Node{ID: id, Name: id, Type: models.AssetVM, Source: "tf", Metadata: map[string]string{}, LastSeen: now, FirstSeen: now})
+			_ = store.UpsertEdge(ctx, models.Edge{ID: id + "->" + hub, FromID: id, ToID: hub, Type: models.EdgeDependsOn, Metadata: map[string]string{}})
+		}
+	}
+	_ = store.Close()
+
+	err = runCmd(app, app.graphSPOFCmd(), "spof", "--limit", "1")
+	if err != nil {
+		t.Fatalf("graph spof error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "single point") {
+		t.Errorf("expected SPOF output, got: %s", output)
+	}
+}
+
+func TestDBStatsCmd_Empty(t *testing.T) {
+	app, buf := newTestApp(t)
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+
+	err = runCmd(app, app.dbStatsCmd(), "stats")
+	if err != nil {
+		t.Fatalf("db stats error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Nodes:") {
+		t.Errorf("expected 'Nodes:' in output, got: %s", output)
+	}
+}
+
+func TestGraphPathCmd_ToNotFound(t *testing.T) {
+	app, _ := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphPathCmd(), "path", "vm:web1", "nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent 'to' node")
+	}
+}
+
+func TestGraphPathCmd_FromNotFound(t *testing.T) {
+	app, _ := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphPathCmd(), "path", "nonexistent", "db:pg1")
+	if err == nil {
+		t.Error("expected error for nonexistent 'from' node")
+	}
+}
+
+func TestGraphEdgesCmd_WithFilter(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphEdgesCmd(), "edges", "--type", "depends_on")
+	if err != nil {
+		t.Fatalf("graph edges error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "depends_on") {
+		t.Errorf("expected 'depends_on' in output, got: %s", output)
+	}
+}
+
+func TestGraphCmd_HasSubcommands(t *testing.T) {
+	app, _ := newTestApp(t)
+	cmd := app.graphCmd()
+	if !cmd.HasSubCommands() {
+		t.Error("graph command should have subcommands")
+	}
+	// Verify key subcommands are registered
+	names := make(map[string]bool)
+	for _, sub := range cmd.Commands() {
+		names[sub.Name()] = true
+	}
+	for _, want := range []string{"show", "nodes", "edges", "path", "deps", "prune", "export", "cycles", "spof", "orphans"} {
+		if !names[want] {
+			t.Errorf("missing subcommand %q", want)
+		}
+	}
+}
+
+func TestGraphDepsCmd_NodeNotFound(t *testing.T) {
+	app, _ := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphDepsCmd(), "deps", "nonexistent:node")
+	if err == nil {
+		t.Error("expected error for nonexistent node")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
+
+func TestDBStatsCmd_WithScans(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	// Record a scan so the scan status count loop is exercised.
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	scanID, err := store.RecordScan(ctx, graph.Scan{
+		Source:     "terraform",
+		SourcePath: "/some/path",
+		StartedAt:  time.Now(),
+		Status:     "running",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateScan(ctx, scanID, "completed", 5, 3); err != nil {
+		t.Fatal(err)
+	}
+	store.Close() //nolint:errcheck // best-effort cleanup in test
+
+	if err := runCmd(app, app.dbStatsCmd(), "stats"); err != nil {
+		t.Fatalf("db stats error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Scans:") {
+		t.Error("expected 'Scans:' in output")
+	}
+	if !strings.Contains(output, "completed") {
+		t.Errorf("expected 'completed' in scan status output, got: %s", output)
+	}
+}
+
+func TestGraphPruneCmd_MoreThan10Nodes(t *testing.T) {
+	app, buf := newTestApp(t)
+	app.in = strings.NewReader("y\n")
+
+	store, _, err := app.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	// Create 12 nodes so the "... and N more" branch is triggered.
+	for i := 0; i < 12; i++ {
+		id := fmt.Sprintf("vm:node%d", i)
+		if err := store.UpsertNode(ctx, models.Node{
+			ID: id, Name: fmt.Sprintf("node%d", i), Type: models.AssetVM,
+			Source: "terraform", Provider: "aws", Metadata: map[string]string{},
+			LastSeen: now.Add(-48 * time.Hour), FirstSeen: now.Add(-48 * time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store.Close() //nolint:errcheck // best-effort cleanup in test
+
+	err = runCmd(app, app.graphPruneCmd(), "prune", "--stale-days", "1")
+	if err != nil {
+		t.Fatalf("graph prune error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "... and") {
+		t.Errorf("expected '... and' in output for >10 nodes, got: %s", output)
+	}
+}
+
+func TestGraphNodesCmd_WithFilter(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.graphNodesCmd(), "nodes", "--type", "vm")
+	if err != nil {
+		t.Fatalf("graph nodes error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "web1") {
+		t.Errorf("expected 'web1' in output, got: %s", output)
 	}
 }
