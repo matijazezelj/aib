@@ -9,7 +9,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/time v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.44.3
+	modernc.org/sqlite v1.45.0
 )
 
 require (
