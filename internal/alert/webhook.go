@@ -50,7 +50,7 @@ func (w *WebhookAlerter) Send(ctx context.Context, event Event) error {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := w.client.Do(req)
+	resp, err := w.client.Do(req) //#nosec G704 -- URL is from trusted config, not user input
 	if err != nil {
 		return fmt.Errorf("sending webhook: %w", err)
 	}

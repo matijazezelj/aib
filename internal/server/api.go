@@ -39,11 +39,11 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	_, _ = fmt.Fprintf(w, "# HELP aib_nodes_total Total number of nodes in the graph.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE aib_nodes_total gauge\n")
-	_, _ = fmt.Fprintf(w, "aib_nodes_total %d\n", nodeCount)
+	_, _ = fmt.Fprintf(w, "aib_nodes_total %d\n", nodeCount) //#nosec G705 -- integer from store, not user input
 
 	_, _ = fmt.Fprintf(w, "# HELP aib_edges_total Total number of edges in the graph.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE aib_edges_total gauge\n")
-	_, _ = fmt.Fprintf(w, "aib_edges_total %d\n", edgeCount)
+	_, _ = fmt.Fprintf(w, "aib_edges_total %d\n", edgeCount) //#nosec G705 -- integer from store, not user input
 
 	_, _ = fmt.Fprintf(w, "# HELP aib_nodes_by_type Number of nodes by asset type.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE aib_nodes_by_type gauge\n")
@@ -60,7 +60,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	expiringCerts, _ := s.tracker.ExpiringCerts(ctx, 30)
 	_, _ = fmt.Fprintf(w, "# HELP aib_certs_expiring_total Certificates expiring within 30 days.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE aib_certs_expiring_total gauge\n")
-	_, _ = fmt.Fprintf(w, "aib_certs_expiring_total %d\n", len(expiringCerts))
+	_, _ = fmt.Fprintf(w, "aib_certs_expiring_total %d\n", len(expiringCerts)) //#nosec G705 -- integer from store, not user input
 
 	scans, _ := s.store.ListScans(ctx, 1000)
 	completed, failed := 0, 0
@@ -588,7 +588,7 @@ func (s *Server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="aib-graph.json"`)
-	_, _ = w.Write([]byte(out))
+	_, _ = w.Write([]byte(out)) //#nosec G705 -- data from internal store, served as file download
 }
 
 func (s *Server) handleExportDOT(w http.ResponseWriter, r *http.Request) {
@@ -600,7 +600,7 @@ func (s *Server) handleExportDOT(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/vnd.graphviz")
 	w.Header().Set("Content-Disposition", `attachment; filename="aib-graph.dot"`)
-	_, _ = w.Write([]byte(out))
+	_, _ = w.Write([]byte(out)) //#nosec G705 -- data from internal store, served as file download
 }
 
 func (s *Server) handleExportMermaid(w http.ResponseWriter, r *http.Request) {
@@ -612,5 +612,5 @@ func (s *Server) handleExportMermaid(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Disposition", `attachment; filename="aib-graph.mmd"`)
-	_, _ = w.Write([]byte(out))
+	_, _ = w.Write([]byte(out)) //#nosec G705 -- data from internal store, served as file download
 }

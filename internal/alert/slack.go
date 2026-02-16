@@ -51,7 +51,7 @@ func (s *SlackAlerter) Send(ctx context.Context, event Event) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := s.client.Do(req)
+	resp, err := s.client.Do(req) //#nosec G704 -- URL is from trusted config, not user input
 	if err != nil {
 		return fmt.Errorf("sending slack webhook: %w", err)
 	}

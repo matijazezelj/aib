@@ -34,7 +34,7 @@ type MemgraphConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	URI      string `mapstructure:"uri"`
 	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
+	Password string `mapstructure:"password"` //#nosec G117 -- config field, not a hardcoded secret
 }
 
 // SourcesConfig lists all infrastructure sources to scan.
@@ -122,7 +122,7 @@ type SlackConfig struct {
 type ServerConfig struct {
 	Listen     string `mapstructure:"listen"`
 	ReadOnly   bool   `mapstructure:"read_only"`
-	APIToken   string `mapstructure:"api_token"`
+	APIToken   string `mapstructure:"api_token"` //#nosec G117 -- config field, not a hardcoded secret
 	CORSOrigin string `mapstructure:"cors_origin"`
 }
 

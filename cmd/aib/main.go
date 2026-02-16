@@ -1446,7 +1446,7 @@ func (a *cliApp) dbBackupCmd() *cobra.Command {
 				return fmt.Errorf("copying database: %w", err)
 			}
 
-			_, _ = fmt.Fprintf(a.out, "Backed up %s to %s (%s)\n", srcPath, dstPath, formatBytes(n))
+			_, _ = fmt.Fprintf(a.out, "Backed up %s to %s (%s)\n", srcPath, dstPath, formatBytes(n)) //#nosec G705 -- CLI output, not HTTP response
 			return nil
 		},
 	}
