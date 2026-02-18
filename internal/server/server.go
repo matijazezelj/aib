@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/subtle"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -210,7 +209,7 @@ func (s *Server) Start() error {
 	if s.readOnly {
 		s.logger.Info("server running in read-only mode (scan triggers disabled)")
 	}
-	fmt.Printf("AIB server running at http://localhost%s\n", s.listen)
+	s.logger.Info("AIB server running", "url", "http://localhost"+s.listen)
 
 	return s.srv.ListenAndServe()
 }

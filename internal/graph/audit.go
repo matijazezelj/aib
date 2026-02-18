@@ -68,6 +68,9 @@ func RunAudit(ctx context.Context, store Store) (*AuditReport, error) {
 		checkOrphanSecrets,
 		checkPublicInstances,
 		checkContainerSecurityBestPractices,
+		checkUnencryptedIngress,
+		checkMissingContainerResources,
+		checkAbsentEncryption,
 	}
 
 	var all []Finding
@@ -445,4 +448,83 @@ func extractContainerName(key string) string {
 		return parts[1]
 	}
 	return "unknown"
+}
+
+// checkUnencryptedIngress flags Ingress resources without TLS configured.
+func checkUnencryptedIngress(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
+	var findings []Finding
+	for _, n := range nodes {
+		if n.Type != models.AssetIngress {
+			continue
+		}
+		hasTLS := metaValue(n.Metadata, "tls", "tls_hosts") != ""
+		if !hasTLS {
+			findings = append(findings, Finding{
+				Severity:    SeverityWarning,
+				Rule:        "unencrypted-ingress",
+				ResourceID:  n.ID,
+				Resource:    n.Name,
+				Type:        string(n.Type),
+				Description: "Ingress does not have TLS configured",
+			})
+		}
+	}
+	return findings
+}
+
+// checkMissingContainerResources flags pods/containers without resource
+// requests or limits defined.
+func checkMissingContainerResources(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
+	var findings []Finding
+	for _, n := range nodes {
+		if n.Type != models.AssetPod {
+			continue
+		}
+		// Look for any container metadata with resource limits.
+		hasLimits := false
+		for k := range n.Metadata {
+			if strings.Contains(k, "resources_limits") || strings.Contains(k, "resources_requests") {
+				hasLimits = true
+				break
+			}
+		}
+		if !hasLimits {
+			findings = append(findings, Finding{
+				Severity:    SeverityInfo,
+				Rule:        "missing-resource-limits",
+				ResourceID:  n.ID,
+				Resource:    n.Name,
+				Type:        string(n.Type),
+				Description: "Pod does not define container resource requests/limits",
+			})
+		}
+	}
+	return findings
+}
+
+// checkAbsentEncryption flags storage resources where no encryption metadata
+// is present at all (rather than just set to false).
+func checkAbsentEncryption(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
+	var findings []Finding
+	encryptionTypes := map[models.AssetType]bool{
+		models.AssetDatabase: true,
+		models.AssetDisk:     true,
+	}
+	for _, n := range nodes {
+		if !encryptionTypes[n.Type] {
+			continue
+		}
+		enc := metaValue(n.Metadata, "encrypted", "storage_encrypted", "StorageEncrypted")
+		if enc == "" {
+			findings = append(findings, Finding{
+				Severity:    SeverityInfo,
+				Rule:        "absent-encryption-config",
+				ResourceID:  n.ID,
+				Resource:    n.Name,
+				Type:        string(n.Type),
+				Description: fmt.Sprintf("%s has no encryption configuration specified", n.Type),
+			})
+		}
+	}
+	return findings
 }

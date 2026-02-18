@@ -11,6 +11,7 @@ import (
 
 	"github.com/matijazezelj/aib/internal/graph"
 	"github.com/matijazezelj/aib/internal/scanner"
+	"github.com/matijazezelj/aib/pkg/models"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -101,7 +102,10 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if nodes == nil {
-		nodes = nil
+		nodes = []models.Node{}
+	}
+	if edges == nil {
+		edges = []models.Edge{}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

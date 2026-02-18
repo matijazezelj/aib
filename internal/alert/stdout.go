@@ -41,6 +41,8 @@ func severityIcon(severity string) string {
 		return "[WARN]"
 	case "info":
 		return "[INFO]"
+	case "expired":
+		return "[EXPD]"
 	default:
 		return "[----]"
 	}

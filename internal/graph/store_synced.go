@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -168,8 +167,4 @@ func (s *SyncedStore) MemgraphDriver() neo4j.DriverWithContext {
 	return s.driver
 }
 
-func init() {
-	// Ensure SyncedStore still satisfies all the methods consumers need.
-	// Since it embeds *SQLiteStore, all SQLiteStore methods are promoted.
-	_ = fmt.Sprintf // use fmt
-}
+

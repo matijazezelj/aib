@@ -21,7 +21,11 @@ func RenderHelm(ctx context.Context, chartPath string, valuesFile string) (*pars
 
 	args := []string{"template", "release", chartPath}
 	if valuesFile != "" {
-		args = append(args, "-f", valuesFile)
+		resolvedValues, err := parser.SafeResolvePath(valuesFile)
+		if err != nil {
+			return nil, fmt.Errorf("resolving values file path: %w", err)
+		}
+		args = append(args, "-f", resolvedValues)
 	}
 
 	cmd := exec.CommandContext(ctx, "helm", args...) // #nosec G204 -- args are constructed internally

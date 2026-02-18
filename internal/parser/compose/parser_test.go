@@ -98,14 +98,14 @@ func TestParse(t *testing.T) {
 	}
 
 	// volume mounts
-	if _, ok := edgeMap["compose:container:web->mounts_secret->compose:volume:static"]; !ok {
-		t.Error("missing web -> mounts_secret -> static edge")
+	if _, ok := edgeMap["compose:container:web->mounts_volume->compose:volume:static"]; !ok {
+		t.Error("missing web -> mounts_volume -> static edge")
 	}
-	if _, ok := edgeMap["compose:container:api->mounts_secret->compose:volume:logs"]; !ok {
-		t.Error("missing api -> mounts_secret -> logs edge")
+	if _, ok := edgeMap["compose:container:api->mounts_volume->compose:volume:logs"]; !ok {
+		t.Error("missing api -> mounts_volume -> logs edge")
 	}
-	if _, ok := edgeMap["compose:container:db->mounts_secret->compose:volume:pgdata"]; !ok {
-		t.Error("missing db -> mounts_secret -> pgdata edge")
+	if _, ok := edgeMap["compose:container:db->mounts_volume->compose:volume:pgdata"]; !ok {
+		t.Error("missing db -> mounts_volume -> pgdata edge")
 	}
 }
 
@@ -140,8 +140,8 @@ func TestParse_EdgeMetadata(t *testing.T) {
 		t.Errorf("network edge raw_value = %q, want \"frontend\"", e.Metadata["raw_value"])
 	}
 
-	// volume mounts_secret edge metadata
-	e = edgeMap["compose:container:db->mounts_secret->compose:volume:pgdata"]
+	// volume mounts_volume edge metadata
+	e = edgeMap["compose:container:db->mounts_volume->compose:volume:pgdata"]
 	if e.Metadata["via"] != "volumes" {
 		t.Errorf("volume edge via = %q, want \"volumes\"", e.Metadata["via"])
 	}

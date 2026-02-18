@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,14 +56,20 @@ func (p *PlanParser) Supported(path string) bool {
 	if !strings.HasSuffix(path, ".json") {
 		return false
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by caller
+	f, err := os.Open(path) // #nosec G304 -- paths validated by caller
 	if err != nil {
+		return false
+	}
+	defer f.Close() //nolint:errcheck
+	buf := make([]byte, 4096)
+	n, _ := f.Read(buf)
+	if n == 0 {
 		return false
 	}
 	var probe struct {
 		FormatVersion string `json:"format_version"`
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
+	if err := json.Unmarshal(buf[:n], &probe); err != nil {
 		return false
 	}
 	return probe.FormatVersion != ""
@@ -103,7 +110,14 @@ func (p *PlanParser) ParseMulti(ctx context.Context, paths []string) (*parser.Pa
 	}
 
 	// Phase 2: parse each plan file using the global ref map.
-	for path, data := range planData {
+	sortedPaths := make([]string, 0, len(planData))
+	for p := range planData {
+		sortedPaths = append(sortedPaths, p)
+	}
+	sort.Strings(sortedPaths)
+
+	for _, path := range sortedPaths {
+		data := planData[path]
 		r, err := parsePlanBytesWithRefs(data, path, globalRefMap)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("parsing %s: %v", path, err))
@@ -215,7 +229,7 @@ func parsePlanBytesWithRefs(data []byte, sourcePath string, refToNodeID map[stri
 		result.Nodes = append(result.Nodes, node)
 
 		// Create edges based on attribute references.
-		createAttributeEdges(nodeID, rc.Type, attrs, result, refToNodeID)
+		createAttributeEdges(nodeID, rc.Type, attrs, result, refToNodeID, nil)
 	}
 
 	return result, nil

@@ -64,13 +64,17 @@ func syncToMemgraph(ctx context.Context, store *SQLiteStore, sf sessionFactory, 
 
 		cypher := `
 			UNWIND $nodes AS n
-			CREATE (a:Asset {
-				id: n.id, name: n.name, type: n.type,
-				source: n.source, source_file: n.sourceFile,
-				provider: n.provider, metadata: n.metadata,
-				expires_at: n.expiresAt, last_seen: n.lastSeen,
-				first_seen: n.firstSeen
-			})
+			MERGE (a:Asset {id: n.id})
+			ON CREATE SET a.name = n.name, a.type = n.type,
+				a.source = n.source, a.source_file = n.sourceFile,
+				a.provider = n.provider, a.metadata = n.metadata,
+				a.expires_at = n.expiresAt, a.last_seen = n.lastSeen,
+				a.first_seen = n.firstSeen
+			ON MATCH SET a.name = n.name, a.type = n.type,
+				a.source = n.source, a.source_file = n.sourceFile,
+				a.provider = n.provider, a.metadata = n.metadata,
+				a.expires_at = n.expiresAt, a.last_seen = n.lastSeen,
+				a.first_seen = n.firstSeen
 		`
 		_, err := session.Run(ctx, cypher, map[string]any{"nodes": nodeParams})
 		if err != nil {
@@ -102,7 +106,9 @@ func syncToMemgraph(ctx context.Context, store *SQLiteStore, sf sessionFactory, 
 			UNWIND $edges AS e
 			MATCH (from:Asset {id: e.fromID})
 			MATCH (to:Asset {id: e.toID})
-			CREATE (from)-[:EDGE {id: e.id, type: e.type, metadata: e.metadata}]->(to)
+			MERGE (from)-[r:EDGE {id: e.id}]->(to)
+			ON CREATE SET r.type = e.type, r.metadata = e.metadata
+			ON MATCH SET r.type = e.type, r.metadata = e.metadata
 		`
 		_, err := session.Run(ctx, cypher, map[string]any{"edges": edgeParams})
 		if err != nil {
@@ -111,7 +117,6 @@ func syncToMemgraph(ctx context.Context, store *SQLiteStore, sf sessionFactory, 
 	}
 
 	logger.Info("memgraph sync complete", "nodes", len(nodes), "edges", len(edges))
-	fmt.Printf("Synced %d nodes and %d edges to Memgraph\n", len(nodes), len(edges))
 	return nil
 }
 

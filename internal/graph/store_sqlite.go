@@ -139,6 +139,79 @@ func (s *SQLiteStore) UpsertEdge(ctx context.Context, edge models.Edge) error {
 	return err
 }
 
+// UpsertBatch inserts or updates all nodes and edges within a single database
+// transaction. This is significantly faster and more consistent than
+// individual UpsertNode/UpsertEdge calls for bulk operations.
+func (s *SQLiteStore) UpsertBatch(ctx context.Context, nodes []models.Node, edges []models.Edge) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // rolled back on error; commit below on success
+
+	nodeStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO nodes (id, name, type, source, source_file, provider, metadata, expires_at, last_seen, first_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			type = excluded.type,
+			source = excluded.source,
+			source_file = excluded.source_file,
+			provider = excluded.provider,
+			metadata = excluded.metadata,
+			expires_at = excluded.expires_at,
+			last_seen = excluded.last_seen
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing node statement: %w", err)
+	}
+	defer nodeStmt.Close() //nolint:errcheck
+
+	for _, node := range nodes {
+		meta, err := json.Marshal(node.Metadata)
+		if err != nil {
+			return fmt.Errorf("marshaling node metadata: %w", err)
+		}
+		var expiresAt *string
+		if node.ExpiresAt != nil {
+			t := node.ExpiresAt.Format(time.RFC3339)
+			expiresAt = &t
+		}
+		if _, err := nodeStmt.ExecContext(ctx,
+			node.ID, node.Name, string(node.Type), node.Source, node.SourceFile,
+			node.Provider, string(meta), expiresAt,
+			node.LastSeen.Format(time.RFC3339), node.FirstSeen.Format(time.RFC3339),
+		); err != nil {
+			return fmt.Errorf("upserting node %s: %w", node.ID, err)
+		}
+	}
+
+	edgeStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO edges (id, from_id, to_id, type, metadata)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(from_id, to_id, type) DO UPDATE SET
+			metadata = excluded.metadata
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing edge statement: %w", err)
+	}
+	defer edgeStmt.Close() //nolint:errcheck
+
+	for _, edge := range edges {
+		meta, err := json.Marshal(edge.Metadata)
+		if err != nil {
+			return fmt.Errorf("marshaling edge metadata: %w", err)
+		}
+		if _, err := edgeStmt.ExecContext(ctx,
+			edge.ID, edge.FromID, edge.ToID, string(edge.Type), string(meta),
+		); err != nil {
+			return fmt.Errorf("upserting edge %s: %w", edge.ID, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // GetNode retrieves a single node by ID.
 func (s *SQLiteStore) GetNode(ctx context.Context, id string) (*models.Node, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, name, type, source, source_file, provider, metadata, expires_at, last_seen, first_seen FROM nodes WHERE id = ?`, id)

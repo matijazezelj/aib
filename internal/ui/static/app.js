@@ -278,6 +278,9 @@ function maskSensitive(str) {
 
 async function fetchJSON(url) {
     const resp = await fetch(url);
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
     return resp.json();
 }
 
@@ -1705,3 +1708,38 @@ async function showDetail(nodeId) {
 }
 
 init();
+
+// --- Auto-refresh ---
+let autoRefreshTimer = null;
+
+function startAutoRefresh(intervalMs) {
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(async () => {
+        try {
+            const gd = await fetchJSON(`${API}/graph`);
+            const prevNodeCount = (graphData.nodes || []).length;
+            const prevEdgeCount = (graphData.edges || []).length;
+            if (gd.nodes?.length !== prevNodeCount || gd.edges?.length !== prevEdgeCount) {
+                graphData = gd;
+                const groupBy = document.getElementById('group-by').value;
+                const elements = buildElements(graphData, groupBy);
+                cy.json({ elements });
+                cy.layout(LAYOUTS[document.getElementById('layout-mode')?.value || 'balanced']).run();
+                renderResourcePanel();
+                buildEdgeFilterPills();
+                applyNodeVisibilityFilters();
+            }
+        } catch { /* ignore transient failures */ }
+    }, intervalMs);
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+}
+
+// Expose for optional use via browser console: startAutoRefresh(30000)
+window.startAutoRefresh = startAutoRefresh;
+window.stopAutoRefresh = stopAutoRefresh;

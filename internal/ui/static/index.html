@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AIB — Assets in a Box</title>
     <link rel="stylesheet" href="/style.css">
-    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js" integrity="sha384-J7Q85oZE4GJ/e7+n2aOQsLXfDwwfnA8S2nZAL5BpFsfpCF84zQD7LroZ/dMnLgex" crossorigin="anonymous"></script>
 </head>
 <body>
     <header>
@@ -106,13 +106,13 @@
             <div class="focus-controls" id="focus-controls">
                 <h4>Graph Focus</h4>
                 <div class="focus-row">
-                    <span class="focus-label">Dependencies</span>
+                    <span class="focus-label">Impact</span>
                     <div class="depth-buttons" id="upstream-depth">
                         <button data-depth="1">1</button><button data-depth="2">2</button><button data-depth="3">3</button><button data-depth="4">4</button><button data-depth="5">5</button>
                     </div>
                 </div>
                 <div class="focus-row">
-                    <span class="focus-label">Impact</span>
+                    <span class="focus-label">Dependencies</span>
                     <div class="depth-buttons" id="downstream-depth">
                         <button data-depth="1">1</button><button data-depth="2">2</button><button data-depth="3">3</button><button data-depth="4">4</button><button data-depth="5">5</button>
                     </div>

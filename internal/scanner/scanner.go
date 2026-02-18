@@ -94,16 +94,11 @@ func (s *Scanner) RunSync(ctx context.Context, req ScanRequest) ScanResult {
 		s.logger.Warn("failed to compute drift", "error", driftErr)
 	}
 
-	// Store all nodes first, then all edges
-	for _, n := range result.Nodes {
-		if err := s.store.UpsertNode(ctx, n); err != nil {
-			s.logger.Warn("failed to store node", "id", n.ID, "error", err)
-		}
-	}
-	for _, e := range result.Edges {
-		if err := s.store.UpsertEdge(ctx, e); err != nil {
-			s.logger.Warn("failed to store edge", "id", e.ID, "error", err)
-		}
+	// Store all nodes and edges in a single transaction
+	if err := s.store.UpsertBatch(ctx, result.Nodes, result.Edges); err != nil {
+		s.logger.Error("failed to store scan results", "error", err)
+		_ = s.store.UpdateScan(ctx, scanID, "failed", 0, 0)
+		return ScanResult{ScanID: scanID, Error: err}
 	}
 
 	// Persist drift summary
@@ -183,15 +178,10 @@ func (s *Scanner) RunAsync(ctx context.Context, req ScanRequest) (int64, error) 
 			s.logger.Warn("failed to compute drift", "error", driftErr)
 		}
 
-		for _, n := range result.Nodes {
-			if err := s.store.UpsertNode(asyncCtx, n); err != nil {
-				s.logger.Warn("failed to store node", "id", n.ID, "error", err)
-			}
-		}
-		for _, e := range result.Edges {
-			if err := s.store.UpsertEdge(asyncCtx, e); err != nil {
-				s.logger.Warn("failed to store edge", "id", e.ID, "error", err)
-			}
+		if err := s.store.UpsertBatch(asyncCtx, result.Nodes, result.Edges); err != nil {
+			s.logger.Error("failed to store scan results", "scanID", scanID, "error", err)
+			_ = s.store.UpdateScan(asyncCtx, scanID, "failed", 0, 0)
+			return
 		}
 
 		// Persist drift summary

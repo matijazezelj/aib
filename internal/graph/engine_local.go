@@ -63,6 +63,19 @@ func (e *LocalEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]
 		}
 	}
 
+	// Build a reverse lookup: for any pair of neighbors, find the edge between them.
+	allEdgesMap := make(map[string]models.Edge) // "from->to" → edge
+	for _, edgeList := range downstream {
+		for _, edge := range edgeList {
+			allEdgesMap[edge.FromID+"->"+edge.ToID] = edge
+		}
+	}
+	for _, edgeList := range upstream {
+		for _, edge := range edgeList {
+			allEdgesMap[edge.FromID+"->"+edge.ToID] = edge
+		}
+	}
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
@@ -75,6 +88,15 @@ func (e *LocalEngine) ShortestPath(ctx context.Context, fromID, toID string) ([]
 				n, _ := e.store.GetNode(ctx, nid)
 				if n != nil {
 					nodes = append(nodes, *n)
+				}
+			}
+			// Reconstruct edges between consecutive path nodes
+			for i := 0; i+1 < len(current.path); i++ {
+				a, b := current.path[i], current.path[i+1]
+				if edge, ok := allEdgesMap[a+"->"+b]; ok {
+					edges = append(edges, edge)
+				} else if edge, ok := allEdgesMap[b+"->"+a]; ok {
+					edges = append(edges, edge)
 				}
 			}
 			return nodes, edges, nil

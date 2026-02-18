@@ -303,20 +303,21 @@ func buildInferredDatabaseNode(h hostEntry, varKey, rawTarget, resolvedTarget st
 		hostAddress = resolvedTarget
 	}
 
-	dbPort := firstNonEmpty(h.vars["db_port"], h.vars["database_port"], h.vars["postgres_port"], h.vars["mysql_port"], "5432")
-	dbScheme := firstNonEmpty(h.vars["db_scheme"], h.vars["database_scheme"], "postgres")
-	dbUser := firstNonEmpty(h.vars["db_user"], h.vars["database_user"], h.vars["postgres_user"], h.vars["mysql_user"])
-	dbPass := firstNonEmpty(h.vars["db_password"], h.vars["database_password"], h.vars["postgres_password"], h.vars["mysql_password"])
+	// Choose sensible defaults based on which variable key triggered the inference.
+	defaultPort := "5432"
+	defaultScheme := "postgres"
+	lowerKey := strings.ToLower(varKey)
+	if strings.Contains(lowerKey, "mysql") {
+		defaultPort = "3306"
+		defaultScheme = "mysql"
+	}
+
+	dbPort := firstNonEmpty(h.vars["db_port"], h.vars["database_port"], h.vars["postgres_port"], h.vars["mysql_port"], defaultPort)
+	dbScheme := firstNonEmpty(h.vars["db_scheme"], h.vars["database_scheme"], defaultScheme)
 
 	connectionString := firstNonEmpty(h.vars["db_connection_string"], h.vars["database_url"], h.vars["connection_string"])
 	if connectionString == "" {
-		auth := ""
-		if dbUser != "" && dbPass != "" {
-			auth = fmt.Sprintf("%s:%s@", dbUser, dbPass)
-		} else if dbUser != "" {
-			auth = fmt.Sprintf("%s@", dbUser)
-		}
-		connectionString = fmt.Sprintf("%s://%s%s:%s/%s", dbScheme, auth, hostAddress, dbPort, dbName)
+		connectionString = fmt.Sprintf("%s://%s:%s/%s", dbScheme, hostAddress, dbPort, dbName)
 	}
 
 	dbNodeID := fmt.Sprintf("ansible:database:%s@%s", sanitizeNodePart(dbName), sanitizeNodePart(hostLabel))

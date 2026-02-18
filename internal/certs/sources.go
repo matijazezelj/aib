@@ -2,7 +2,6 @@ package certs
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net"
 
@@ -15,30 +14,44 @@ import (
 func DiscoverEndpoints(ctx context.Context, store *graph.SQLiteStore, logger *slog.Logger) []string {
 	var endpoints []string
 
+	// portOrDefault returns the port from metadata, or "443" if not set.
+	portOrDefault := func(meta map[string]string) string {
+		if p, ok := meta["port"]; ok && p != "" {
+			return p
+		}
+		if p, ok := meta["tls_port"]; ok && p != "" {
+			return p
+		}
+		return "443"
+	}
+
 	// Look at ingress nodes for hostnames
 	ingresses, _ := store.ListNodes(ctx, graph.NodeFilter{Type: string(models.AssetIngress)})
 	for _, n := range ingresses {
+		port := portOrDefault(n.Metadata)
 		if host, ok := n.Metadata["host"]; ok && host != "" {
-			endpoints = append(endpoints, net.JoinHostPort(host, "443"))
+			endpoints = append(endpoints, net.JoinHostPort(host, port))
 		}
 		if host, ok := n.Metadata["hostname"]; ok && host != "" {
-			endpoints = append(endpoints, net.JoinHostPort(host, "443"))
+			endpoints = append(endpoints, net.JoinHostPort(host, port))
 		}
 	}
 
 	// Look at load balancers
 	lbs, _ := store.ListNodes(ctx, graph.NodeFilter{Type: string(models.AssetLoadBalancer)})
 	for _, n := range lbs {
+		port := portOrDefault(n.Metadata)
 		if ip, ok := n.Metadata["ip_address"]; ok && ip != "" {
-			endpoints = append(endpoints, net.JoinHostPort(ip, "443"))
+			endpoints = append(endpoints, net.JoinHostPort(ip, port))
 		}
 	}
 
 	// Look at DNS records
 	dnsRecords, _ := store.ListNodes(ctx, graph.NodeFilter{Type: string(models.AssetDNSRecord)})
 	for _, n := range dnsRecords {
+		port := portOrDefault(n.Metadata)
 		if n.Name != "" {
-			endpoints = append(endpoints, net.JoinHostPort(n.Name, "443"))
+			endpoints = append(endpoints, net.JoinHostPort(n.Name, port))
 		}
 	}
 
@@ -71,6 +84,6 @@ func ProbeAll(ctx context.Context, tracker *Tracker, store *graph.SQLiteStore, l
 		results = append(results, *ci)
 	}
 
-	fmt.Printf("Probed %d TLS endpoints, found %d certificates\n", len(endpoints), len(results))
+	logger.Info("TLS endpoint probing complete", "probed", len(endpoints), "found", len(results))
 	return results
 }

@@ -126,7 +126,14 @@ func (p *CFNParser) ParseMulti(ctx context.Context, paths []string) (*parser.Par
 	}
 
 	// Phase 2: parse each template using the global ref map.
-	for path, data := range templateData {
+	sortedPaths := make([]string, 0, len(templateData))
+	for p := range templateData {
+		sortedPaths = append(sortedPaths, p)
+	}
+	sort.Strings(sortedPaths)
+
+	for _, path := range sortedPaths {
+		data := templateData[path]
 		r, err := parseCFNWithRefs(data, path, globalRefMap)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("parsing %s: %v", path, err))

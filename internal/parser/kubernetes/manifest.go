@@ -528,7 +528,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			node := models.Node{
 				ID:         nodeID,
 				Name:       res.Metadata.Name,
-				Type:       models.AssetSecret, // ConfigMaps are config, closest type
+				Type:       models.AssetConfigMap,
 				Source:     "kubernetes",
 				SourceFile: sourceFile,
 				Provider:   "kubernetes",
@@ -696,7 +696,19 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			result.Nodes = append(result.Nodes, node)
 
 		default:
-			result.Warnings = append(result.Warnings, fmt.Sprintf("skipping unsupported kind: %s/%s", res.Kind, res.Metadata.Name))
+			// Only warn for non-well-known Kubernetes kinds to reduce noise.
+			wellKnown := map[string]bool{
+				"Endpoints": true, "EndpointSlice": true, "Event": true,
+				"LimitRange": true, "ResourceQuota": true, "PodDisruptionBudget": true,
+				"StorageClass": true, "CSIDriver": true, "CSINode": true,
+				"VolumeAttachment": true, "PriorityClass": true,
+				"MutatingWebhookConfiguration": true, "ValidatingWebhookConfiguration": true,
+				"CustomResourceDefinition": true, "APIService": true,
+				"List": true, "ComponentStatus": true, "Node": true,
+			}
+			if !wellKnown[res.Kind] {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("skipping unsupported kind: %s/%s", res.Kind, res.Metadata.Name))
+			}
 		}
 	}
 
@@ -870,7 +882,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 							Metadata: map[string]string{"via": "volume"},
 						})
 					}
-				ensureNode(nodeMap, result, cmID, vol.ConfigMap.Name, models.AssetSecret, ns, sourceFile, now)
+				ensureNode(nodeMap, result, cmID, vol.ConfigMap.Name, models.AssetConfigMap, ns, sourceFile, now)
 				}
 			}
 
@@ -906,7 +918,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 								Metadata: map[string]string{"via": "envFrom"},
 							})
 						}
-					ensureNode(nodeMap, result, cmID, ef.ConfigMapRef.Name, models.AssetSecret, ns, sourceFile, now)
+					ensureNode(nodeMap, result, cmID, ef.ConfigMapRef.Name, models.AssetConfigMap, ns, sourceFile, now)
 						for key, value := range configMapData[cmID] {
 							connectivityValues["configmap:"+ef.ConfigMapRef.Name+":"+key] = value
 						}
@@ -947,7 +959,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 								Metadata: map[string]string{"via": "env"},
 							})
 						}
-					ensureNode(nodeMap, result, cmID, env.ValueFrom.ConfigMapKeyRef.Name, models.AssetSecret, ns, sourceFile, now)
+					ensureNode(nodeMap, result, cmID, env.ValueFrom.ConfigMapKeyRef.Name, models.AssetConfigMap, ns, sourceFile, now)
 						if env.ValueFrom.ConfigMapKeyRef.Key != "" {
 							if cmValues, ok := configMapData[cmID]; ok {
 								if value, exists := cmValues[env.ValueFrom.ConfigMapKeyRef.Key]; exists {

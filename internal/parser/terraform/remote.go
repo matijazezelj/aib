@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"time"
 
@@ -83,7 +84,7 @@ func PullRemoteMulti(ctx context.Context, projectDirs []string, workspace string
 				continue
 			}
 			for _, ws := range workspaces {
-				fmt.Printf("Pulling state from %s (workspace: %s)...\n", dir, ws)
+				slog.InfoContext(ctx, "pulling state", "dir", dir, "workspace", ws)
 				data, err := pullStateBytes(ctx, dir, ws)
 				if err != nil {
 					warnings = append(warnings, fmt.Sprintf("%s workspace %q: %v", dir, ws, err))
@@ -96,7 +97,7 @@ func PullRemoteMulti(ctx context.Context, projectDirs []string, workspace string
 			if workspace != "" {
 				wsLabel = workspace
 			}
-			fmt.Printf("Pulling remote state from %s (workspace: %s)...\n", dir, wsLabel)
+			slog.InfoContext(ctx, "pulling remote state", "dir", dir, "workspace", wsLabel)
 			data, err := pullStateBytes(ctx, dir, workspace)
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("%s: %v", dir, err))
@@ -219,6 +220,7 @@ func parseStateBytesWithRefs(data []byte, sourcePath string, refToNodeID map[str
 
 	result := &parser.ParseResult{}
 	now := time.Now()
+	edgeSet := make(map[string]bool)
 
 	for _, res := range state.Resources {
 		if res.Mode == "data" {
@@ -269,6 +271,10 @@ func parseStateBytesWithRefs(data []byte, sourcePath string, refToNodeID map[str
 					continue
 				}
 				edgeID := fmt.Sprintf("%s->depends_on->%s", nodeID, depNodeID)
+				if edgeSet[edgeID] {
+					continue
+				}
+				edgeSet[edgeID] = true
 				result.Edges = append(result.Edges, models.Edge{
 					ID:     edgeID,
 					FromID: nodeID,
@@ -281,7 +287,7 @@ func parseStateBytesWithRefs(data []byte, sourcePath string, refToNodeID map[str
 				})
 			}
 
-			createAttributeEdges(nodeID, res.Type, inst.Attributes, result, refToNodeID)
+			createAttributeEdges(nodeID, res.Type, inst.Attributes, result, refToNodeID, edgeSet)
 		}
 	}
 

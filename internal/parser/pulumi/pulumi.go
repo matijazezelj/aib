@@ -56,16 +56,19 @@ func (p *PulumiParser) Supported(path string) bool {
 		return false
 	}
 
-	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by caller
+	f, err := os.Open(path) // #nosec G304 -- paths validated by caller
 	if err != nil {
 		return false
 	}
-
-	var state pulumiState
-	if err := json.Unmarshal(data, &state); err != nil {
+	defer f.Close() //nolint:errcheck
+	buf := make([]byte, 4096)
+	n, _ := f.Read(buf)
+	if n == 0 {
 		return false
 	}
-	return state.Deployment.Resources != nil
+	// Check for Pulumi state markers in the header
+	header := string(buf[:n])
+	return strings.Contains(header, "\"deployment\"") && strings.Contains(header, "\"resources\"")
 }
 
 // Parse reads a Pulumi state file and returns discovered nodes and edges.

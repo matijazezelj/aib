@@ -40,6 +40,7 @@ const (
 	AssetFunction       AssetType = "function"
 	AssetAPIGateway     AssetType = "api_gateway"
 	AssetNoSQLDB        AssetType = "nosql_database"
+	AssetConfigMap      AssetType = "configmap"
 )
 
 // EdgeType represents the kind of relationship between assets.
@@ -54,6 +55,7 @@ const (
 	EdgeResolvesTo    EdgeType = "resolves_to"
 	EdgeMemberOf      EdgeType = "member_of"
 	EdgeMountsSecret  EdgeType = "mounts_secret"
+	EdgeMountsVolume  EdgeType = "mounts_volume"
 	EdgeExposedBy     EdgeType = "exposed_by"
 	EdgeConnectsTo    EdgeType = "connects_to"
 	EdgeManagedBy     EdgeType = "managed_by"

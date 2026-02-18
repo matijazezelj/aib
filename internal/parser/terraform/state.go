@@ -415,7 +415,7 @@ func extractMetadata(resourceType string, attrs map[string]any) map[string]strin
 	return meta
 }
 
-func createAttributeEdges(nodeID string, resourceType string, attrs map[string]any, result *parser.ParseResult, refToNodeID map[string]string) {
+func createAttributeEdges(nodeID string, resourceType string, attrs map[string]any, result *parser.ParseResult, refToNodeID map[string]string, edgeSet map[string]bool) {
 	// Helper: try to resolve a resource path/name to a known node ID.
 	// Returns "" if the target node is not found in the current state.
 	resolveTarget := func(attrVal string) string {
@@ -432,8 +432,15 @@ func createAttributeEdges(nodeID string, resourceType string, attrs map[string]a
 		if targetID == "" {
 			return
 		}
+		edgeID := fmt.Sprintf("%s->connects_to->%s", nodeID, targetID)
+		if edgeSet != nil {
+			if edgeSet[edgeID] {
+				return
+			}
+			edgeSet[edgeID] = true
+		}
 		result.Edges = append(result.Edges, models.Edge{
-			ID:       fmt.Sprintf("%s->connects_to->%s", nodeID, targetID),
+			ID:       edgeID,
 			FromID:   nodeID,
 			ToID:     targetID,
 			Type:     models.EdgeConnectsTo,

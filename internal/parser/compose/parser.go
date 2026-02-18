@@ -275,12 +275,12 @@ func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
 				continue
 			}
 			toID := "compose:volume:" + volName
-			edgeID := fromID + "->mounts_secret->" + toID
+			edgeID := fromID + "->mounts_volume->" + toID
 			result.Edges = append(result.Edges, models.Edge{
 				ID:       edgeID,
 				FromID:   fromID,
 				ToID:     toID,
-				Type:     models.EdgeMountsSecret,
+				Type:     models.EdgeMountsVolume,
 				Metadata: map[string]string{
 					"via":       "volumes",
 					"raw_value": vol,

@@ -40,6 +40,7 @@ func FetchLive(ctx context.Context, kubeconfig, kubeCtx string, namespaces []str
 	now := time.Now()
 
 	resourceTypes := "deployments,statefulsets,daemonsets,services,ingresses,configmaps,secrets,serviceaccounts,roles,rolebindings,networkpolicies,jobs,cronjobs,horizontalpodautoscalers"
+	clusterScopedTypes := "clusterroles,clusterrolebindings"
 
 	for _, ns := range namespaces {
 		data, err := kubectlGetFn(ctx, kubeconfig, kubeCtx, ns, resourceTypes)
@@ -77,6 +78,16 @@ func FetchLive(ctx context.Context, kubeconfig, kubeCtx string, namespaces []str
 		result.Edges = append(result.Edges, r.Edges...)
 	}
 
+	// Fetch cluster-scoped resources (not namespace-bound)
+	csData, err := kubectlGetFn(ctx, kubeconfig, kubeCtx, "", clusterScopedTypes)
+	if err == nil && len(bytes.TrimSpace(csData)) > 0 {
+		if r, err := parseManifests(csData, "live:cluster", now); err == nil {
+			result.Nodes = append(result.Nodes, r.Nodes...)
+			result.Edges = append(result.Edges, r.Edges...)
+			result.Warnings = append(result.Warnings, r.Warnings...)
+		}
+	}
+
 	return result, nil
 }
 
@@ -110,10 +121,15 @@ func listNamespaces(ctx context.Context, kubeconfig, kubeCtx string) ([]string, 
 	return result, nil
 }
 
-// kubectlGet runs kubectl get <resources> -n <namespace> -o yaml.
+// kubectlGet runs kubectl get <resources> -o yaml. If namespace is non-empty,
+// it scopes to that namespace; otherwise it fetches cluster-scoped resources.
 func kubectlGet(ctx context.Context, kubeconfig, kubeCtx, namespace, resourceTypes string) ([]byte, error) {
 	args := buildKubectlArgs(kubeconfig, kubeCtx)
-	args = append(args, "get", resourceTypes, "-n", namespace, "-o", "yaml")
+	args = append(args, "get", resourceTypes)
+	if namespace != "" {
+		args = append(args, "-n", namespace)
+	}
+	args = append(args, "-o", "yaml")
 
 	cmd := exec.CommandContext(ctx, "kubectl", args...) // #nosec G204 -- args are constructed internally
 	var stdout, stderr bytes.Buffer
