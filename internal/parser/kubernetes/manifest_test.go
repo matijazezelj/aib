@@ -217,17 +217,16 @@ func TestParseManifests_InvalidYAML(t *testing.T) {
 }
 
 func TestParseManifests_TLSSecret_DerivesCertificateNode(t *testing.T) {
-	data := []byte(fmt.Sprintf(`---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mtls-cert
-  namespace: production
-type: kubernetes.io/tls
-data:
-	tls.crt: LS0tLQ==
-  tls.key: LS0tLQ==
-`))
+	data := []byte("---\n" +
+		"apiVersion: v1\n" +
+		"kind: Secret\n" +
+		"metadata:\n" +
+		"  name: mtls-cert\n" +
+		"  namespace: production\n" +
+		"type: kubernetes.io/tls\n" +
+		"data:\n" +
+		"  tls.crt: LS0tLQ==\n" +
+		"  tls.key: LS0tLQ==\n")
 
 	result, err := parseManifests(data, "tls-secret.yaml", time.Now())
 	if err != nil {
