@@ -60,13 +60,13 @@ func ExportDOT(ctx context.Context, store Store) (string, error) {
 	for _, n := range nodes {
 		color := nodeColor(n.Type)
 		label := fmt.Sprintf("%s\\n(%s)", n.Name, n.Type)
-		b.WriteString(fmt.Sprintf("  %q [label=%q, fillcolor=%q];\n", n.ID, label, color))
+		fmt.Fprintf(&b, "  %q [label=%q, fillcolor=%q];\n", n.ID, label, color)
 	}
 
 	b.WriteString("\n")
 
 	for _, e := range edges {
-		b.WriteString(fmt.Sprintf("  %q -> %q [label=%q];\n", e.FromID, e.ToID, e.Type))
+		fmt.Fprintf(&b, "  %q -> %q [label=%q];\n", e.FromID, e.ToID, e.Type)
 	}
 
 	b.WriteString("}\n")
@@ -89,7 +89,7 @@ func ExportMermaid(ctx context.Context, store Store) (string, error) {
 
 	for _, n := range nodes {
 		safeID := mermaidSafeID(n.ID)
-		b.WriteString(fmt.Sprintf("  %s[\"%s (%s)\"]\n", safeID, n.Name, n.Type))
+		fmt.Fprintf(&b, "  %s[\"%s (%s)\"]\n", safeID, n.Name, n.Type)
 	}
 
 	for _, e := range edges {
