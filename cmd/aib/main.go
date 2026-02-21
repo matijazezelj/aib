@@ -60,6 +60,9 @@ func (a *cliApp) buildAlerters(cfg *config.Config) []alert.Alerter {
 	if cfg.Alerts.Slack.Enabled && cfg.Alerts.Slack.WebhookURL != "" {
 		alerters = append(alerters, alert.NewSlackAlerter(cfg.Alerts.Slack.WebhookURL, cfg.Alerts.Slack.Channel))
 	}
+	if cfg.Alerts.Teams.Enabled && cfg.Alerts.Teams.WebhookURL != "" {
+		alerters = append(alerters, alert.NewTeamsAlerter(cfg.Alerts.Teams.WebhookURL))
+	}
 	return alerters
 }
 

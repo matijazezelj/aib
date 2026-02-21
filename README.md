@@ -218,6 +218,7 @@ alerts:
   stdout: { enabled: true }
   webhook: { enabled: false, url: "http://sib:8080/api/v1/events" }
   slack: { enabled: false, webhook_url: "https://hooks.slack.com/..." }
+  teams: { enabled: false, webhook_url: "https://example.webhook.office.com/..." }
 ```
 
 All values support `${ENV_VAR}` expansion and `AIB_`-prefixed env overrides (e.g. `AIB_SERVER_LISTEN`).

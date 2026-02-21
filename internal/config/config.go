@@ -92,11 +92,12 @@ type CertsConfig struct {
 	AlertThresholds []int  `mapstructure:"alert_thresholds"`
 }
 
-// AlertsConfig configures alert backends (webhook, stdout, and slack).
+// AlertsConfig configures alert backends (webhook, stdout, slack, and teams).
 type AlertsConfig struct {
 	Webhook WebhookConfig `mapstructure:"webhook"`
 	Stdout  StdoutConfig  `mapstructure:"stdout"`
 	Slack   SlackConfig   `mapstructure:"slack"`
+	Teams   TeamsConfig   `mapstructure:"teams"`
 }
 
 // WebhookConfig configures the webhook alert backend.
@@ -116,6 +117,12 @@ type SlackConfig struct {
 	Enabled    bool   `mapstructure:"enabled"`
 	WebhookURL string `mapstructure:"webhook_url"`
 	Channel    string `mapstructure:"channel"`
+}
+
+// TeamsConfig configures the Microsoft Teams alert backend.
+type TeamsConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	WebhookURL string `mapstructure:"webhook_url"`
 }
 
 // ServerConfig configures the HTTP server, API auth, and CORS.
@@ -178,6 +185,7 @@ func Load(cfgFile string) (*Config, error) {
 	cfg.Storage.Memgraph.Username = os.ExpandEnv(cfg.Storage.Memgraph.Username)
 	cfg.Alerts.Webhook.URL = os.ExpandEnv(cfg.Alerts.Webhook.URL)
 	cfg.Alerts.Slack.WebhookURL = os.ExpandEnv(cfg.Alerts.Slack.WebhookURL)
+	cfg.Alerts.Teams.WebhookURL = os.ExpandEnv(cfg.Alerts.Teams.WebhookURL)
 	cfg.Server.APIToken = os.ExpandEnv(cfg.Server.APIToken)
 	for k, v := range cfg.Alerts.Webhook.Headers {
 		cfg.Alerts.Webhook.Headers[k] = os.ExpandEnv(v)
@@ -242,6 +250,15 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("alerts.slack.webhook_url is not a valid URL: %w", err))
 		} else if u.Scheme != "https" {
 			errs = append(errs, fmt.Errorf("alerts.slack.webhook_url must use https scheme, got %q", u.Scheme))
+		}
+	}
+
+	if c.Alerts.Teams.Enabled && c.Alerts.Teams.WebhookURL != "" {
+		u, err := url.Parse(c.Alerts.Teams.WebhookURL)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("alerts.teams.webhook_url is not a valid URL: %w", err))
+		} else if u.Scheme != "https" {
+			errs = append(errs, fmt.Errorf("alerts.teams.webhook_url must use https scheme, got %q", u.Scheme))
 		}
 	}
 

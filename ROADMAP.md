@@ -84,6 +84,7 @@
 - [x] Kubernetes workload interconnectivity from env/ConfigMap values
 - [x] CSP updated for CDN icon loading (`connect-src`, `img-src data:`)
 - [x] Test coverage gaps filled (compose, terraform, pulumi, CFN, server CSP, ansible)
+- [x] Microsoft Teams webhook integration
 
 ---
 
@@ -109,7 +110,6 @@ Extend `extractMetadata` to handle provider-specific field names:
 **Priority**: Low — cosmetic improvement, doesn't affect graph structure.
 
 ### Future Ideas
-- **Teams alerter** — Microsoft Teams webhook integration (Slack done in v0.7.0)
 - **Graph diff visualization** — side-by-side or overlay in the web UI
 - **Policy engine** — define rules like "no orphan nodes in production" or "max blast radius < 10"
 - **Multi-tenant support** — separate graphs per team/environment with RBAC

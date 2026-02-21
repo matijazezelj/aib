@@ -58,6 +58,9 @@ alerts:
     enabled: false
     webhook_url: "https://hooks.slack.com/services/T.../B.../xxx"
     channel: ""
+  teams:
+    enabled: false
+    webhook_url: "https://example.webhook.office.com/webhookb2/..."
 ```
 
 ## Environment Variables
