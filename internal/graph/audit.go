@@ -25,6 +25,7 @@ type Finding struct {
 	Resource    string   `json:"resource"`
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
+	Title       string   `json:"title"` // alias for Description — for API consumers that expect title
 }
 
 // AuditReport is the result of a full security audit.
@@ -39,6 +40,28 @@ type AuditSummary struct {
 	Critical int `json:"critical"`
 	Warning  int `json:"warning"`
 	Info     int `json:"info"`
+}
+
+// FilterByNode returns a new AuditReport containing only findings for the given node ID.
+func (r *AuditReport) FilterByNode(nodeID string) *AuditReport {
+	var findings []Finding
+	for _, f := range r.Findings {
+		if f.ResourceID == nodeID {
+			findings = append(findings, f)
+		}
+	}
+	summary := AuditSummary{Total: len(findings)}
+	for _, f := range findings {
+		switch f.Severity {
+		case SeverityCritical:
+			summary.Critical++
+		case SeverityWarning:
+			summary.Warning++
+		case SeverityInfo:
+			summary.Info++
+		}
+	}
+	return &AuditReport{Findings: findings, Summary: summary}
 }
 
 // AuditCheck is a function that inspects nodes/edges and returns findings.
@@ -76,6 +99,11 @@ func RunAudit(ctx context.Context, store Store) (*AuditReport, error) {
 	var all []Finding
 	for _, check := range checks {
 		all = append(all, check(ctx, nodes, edges)...)
+	}
+
+	// Populate Title as a mirror of Description for API consumers that expect a title field.
+	for i := range all {
+		all[i].Title = all[i].Description
 	}
 
 	report := &AuditReport{
