@@ -73,13 +73,14 @@ runs:
       uses: actions/setup-go@v6
       with:
         go-version-file: ${{ github.action_path }}/go.mod
+        cache-dependency-path: ${{ github.action_path }}/go.sum
 
     - name: Build AIB from source
       if: ${{ inputs.aib-version == 'source' }}
       shell: bash
       run: |
         set -euo pipefail
-        go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_ACTION_REF:-dev}" -o "${RUNNER_TEMP}/aib" "${GITHUB_ACTION_PATH}/cmd/aib"
+        go -C "${GITHUB_ACTION_PATH}" build -buildvcs=false -trimpath -ldflags "-s -w -X main.version=${GITHUB_ACTION_REF:-dev}" -o "${RUNNER_TEMP}/aib" ./cmd/aib
         echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
 
     - name: Download AIB release
