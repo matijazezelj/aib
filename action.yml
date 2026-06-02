@@ -1,6 +1,9 @@
 name: "AIB Infra Scan"
 description: "Scan IaC files with AIB and publish infrastructure graph/security reports."
 author: "matijazezelj"
+branding:
+  icon: "shield"
+  color: "blue"
 
 inputs:
   paths:
