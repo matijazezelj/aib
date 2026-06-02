@@ -541,7 +541,38 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if nodeID := r.URL.Query().Get("node_id"); nodeID != "" {
+		report = report.FilterByNode(nodeID)
+	}
 	writeJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleResolveNode(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.URL.Query().Get("hostname")
+	if hostname == "" {
+		writeError(w, http.StatusBadRequest, "hostname query parameter required")
+		return
+	}
+
+	nodes, err := s.store.ListNodes(ctx, graph.NodeFilter{})
+	if err != nil {
+		s.logger.Error("listing nodes for resolve", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Match any node whose ID ends with :hostname (covers k8s:node:, ansible:vm:, tf:vm:, etc.)
+	// or whose name matches.
+	suffix := ":" + hostname
+	for _, n := range nodes {
+		if strings.HasSuffix(n.ID, suffix) || n.Name == hostname {
+			writeJSON(w, http.StatusOK, n)
+			return
+		}
+	}
+
+	writeError(w, http.StatusNotFound, "node not found")
 }
 
 // planImpactNode represents a planned resource change with its blast radius.

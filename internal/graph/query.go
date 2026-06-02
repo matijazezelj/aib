@@ -8,10 +8,11 @@ import (
 
 // ImpactResult represents the blast radius analysis of a node.
 type ImpactResult struct {
-	Root          string                `json:"root"`
-	AffectedNodes int                   `json:"affected_nodes"`
-	ImpactTree    map[string]ImpactNode `json:"impact_tree"`
-	AffectedByType map[string]int       `json:"affected_by_type"`
+	Root           string                `json:"root"`
+	AffectedNodes  int                   `json:"affected_nodes"`
+	ImpactTree     map[string]ImpactNode `json:"impact_tree"`
+	AffectedByType map[string]int        `json:"affected_by_type"`
+	Nodes          []ImpactNode          `json:"nodes"` // flat list of affected nodes for easy iteration
 }
 
 // ImpactNode represents a single node in the impact tree.
@@ -82,11 +83,17 @@ func BlastRadius(ctx context.Context, store *SQLiteStore, startNodeID string) (*
 		}
 	}
 
+	nodes := make([]ImpactNode, 0, len(impactTree))
+	for _, n := range impactTree {
+		nodes = append(nodes, n)
+	}
+
 	return &ImpactResult{
 		Root:           startNodeID,
 		AffectedNodes:  len(impactTree),
 		ImpactTree:     impactTree,
 		AffectedByType: affectedByType,
+		Nodes:          nodes,
 	}, nil
 }
 
