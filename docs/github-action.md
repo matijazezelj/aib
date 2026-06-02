@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: matijazezelj/aib@v1.4.0
+      - uses: matijazezelj/aib@v1.4.3
         with:
           paths: |
             .
