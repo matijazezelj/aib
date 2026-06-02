@@ -65,12 +65,12 @@ func (a *cliApp) buildAlerters(cfg *config.Config) []alert.Alerter {
 
 func main() {
 	app := &cliApp{
-		version: version,
-		out:     os.Stdout,
-		errOut:  os.Stderr,
-		in:      os.Stdin,
+		version:      version,
+		out:          os.Stdout,
+		errOut:       os.Stderr,
+		in:           os.Stdin,
 		outputFormat: "text",
-		logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		logger:       slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 	}
 
 	root := &cobra.Command{
@@ -105,6 +105,7 @@ func main() {
 		app.scanCmd(),
 		app.graphCmd(),
 		app.impactCmd(),
+		app.reportCmd(),
 		app.certsCmd(),
 		app.dbCmd(),
 		app.serveCmd(),
@@ -186,6 +187,7 @@ func (a *cliApp) scanCmd() *cobra.Command {
 	cmd.AddCommand(a.scanComposeCmd())
 	cmd.AddCommand(a.scanCloudFormationCmd())
 	cmd.AddCommand(a.scanPulumiCmd())
+	cmd.AddCommand(a.scanAutoCmd())
 	return cmd
 }
 
@@ -1081,7 +1083,7 @@ func (a *cliApp) impactNodeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer store.Close() //nolint:errcheck // best-effort cleanup
+			defer store.Close()  //nolint:errcheck // best-effort cleanup
 			defer engine.Close() //nolint:errcheck // best-effort cleanup
 			ctx := cmd.Context()
 
@@ -1101,13 +1103,13 @@ func (a *cliApp) impactNodeCmd() *cobra.Command {
 
 			if a.jsonOutput() {
 				return a.writeJSON(map[string]any{
-					"node_id":        nodeID,
-					"type":           node.Type,
-					"provider":       node.Provider,
-					"source":         node.Source,
-					"blast_radius":   countTreeNodes(tree) - 1,
-					"impact_tree":    tree,
-					"warnings":       collectWarnings(tree),
+					"node_id":      nodeID,
+					"type":         node.Type,
+					"provider":     node.Provider,
+					"source":       node.Source,
+					"blast_radius": countTreeNodes(tree) - 1,
+					"impact_tree":  tree,
+					"warnings":     collectWarnings(tree),
 				})
 			}
 
@@ -1503,13 +1505,13 @@ func (a *cliApp) dbStatsCmd() *cobra.Command {
 
 			if a.jsonOutput() {
 				return a.writeJSON(map[string]any{
-					"path":           path,
-					"size":           sizeStr,
-					"total_nodes":    nodeCount,
-					"total_edges":    edgeCount,
-					"nodes_by_type":  nodesByType,
-					"edges_by_type":  edgesByType,
-					"total_scans":    len(scans),
+					"path":            path,
+					"size":            sizeStr,
+					"total_nodes":     nodeCount,
+					"total_edges":     edgeCount,
+					"nodes_by_type":   nodesByType,
+					"edges_by_type":   edgesByType,
+					"total_scans":     len(scans),
 					"scans_by_status": statusCounts,
 				})
 			}

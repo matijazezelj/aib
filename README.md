@@ -24,6 +24,41 @@ aib serve   # http://localhost:8080
 
 **Typical workflow:** scan sources → query the graph or open the UI → run `graph audit` → re-scan to track drift.
 
+## GitHub Action
+
+AIB can run in pull requests as a thin wrapper around the CLI: scan IaC, generate Markdown/JSON reports, upload artifacts, and update one stable PR comment.
+
+```yaml
+name: AIB Infra Scan
+
+on:
+  pull_request:
+    paths:
+      - "**/*.tfstate"
+      - "**/*tfplan*.json"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/docker-compose*.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  aib:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: matijazezelj/aib@v1
+        with:
+          paths: .
+          sources: auto
+          comment-pr: true
+          fail-on: critical
+```
+
+Full action docs: [docs/github-action.md](docs/github-action.md)
+
 ## Scanners
 
 AIB ships with seven parsers. Pass multiple paths to any scanner; cross-file references are resolved automatically.
@@ -40,10 +75,11 @@ AIB ships with seven parsers. Pass multiple paths to any scanner; cross-file ref
 
 ```bash
 # Examples
-aib scan terraform *.tfstate                          # multiple state files
-aib scan terraform --remote --workspace='*' project/  # remote backends
-aib scan k8s manifests/ --helm --values=values.yaml   # Helm chart
-aib scan k8s --live --namespace=app                   # live cluster
+aib scan auto .                                      # detect supported IaC files
+aib scan terraform *.tfstate                         # multiple state files
+aib scan terraform --remote --workspace='*' project/ # remote backends
+aib scan k8s manifests/ --helm --values=values.yaml  # Helm chart
+aib scan k8s --live --namespace=app                  # live cluster
 aib scan ansible inventory.ini --playbooks=./playbooks/
 aib scan compose docker-compose.yml
 aib scan cloudformation vpc.yaml database.json
@@ -102,6 +138,8 @@ Runs 15 checks across three severities:
 ```bash
 aib graph audit
 aib -o json graph audit | jq '.findings[] | select(.severity == "critical")'
+aib report --format markdown --out aib-report.md
+aib report --format json --out aib-report.json
 ```
 
 The web UI highlights findings on nodes: red border for critical, orange for warning.

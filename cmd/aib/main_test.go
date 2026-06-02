@@ -389,6 +389,89 @@ func TestGraphShowCmd(t *testing.T) {
 	}
 }
 
+func TestReportCmd_Markdown(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.reportCmd(), "report", "--format", "markdown")
+	if err != nil {
+		t.Fatalf("report markdown error: %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{
+		"# AIB Infrastructure Report",
+		"Total nodes: 2",
+		"Total edges: 1",
+		"vm:web1",
+		"db:pg1",
+		"Security findings: 1",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in markdown report, got: %s", want, output)
+		}
+	}
+}
+
+func TestReportCmd_JSON(t *testing.T) {
+	app, buf := newTestApp(t)
+	seedTestData(t, app)
+
+	err := runCmd(app, app.reportCmd(), "report", "--format", "json")
+	if err != nil {
+		t.Fatalf("report json error: %v", err)
+	}
+
+	var report struct {
+		TotalNodes int `json:"total_nodes"`
+		TotalEdges int `json:"total_edges"`
+		Audit      struct {
+			Summary graph.AuditSummary `json:"summary"`
+		} `json:"audit"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &report); err != nil {
+		t.Fatalf("report JSON is invalid: %v\nOutput: %s", err, buf.String())
+	}
+	if report.TotalNodes != 2 || report.TotalEdges != 1 {
+		t.Fatalf("unexpected graph counts: nodes=%d edges=%d", report.TotalNodes, report.TotalEdges)
+	}
+	if report.Audit.Summary.Total != 1 {
+		t.Fatalf("expected one info finding for missing encryption config, got %+v", report.Audit.Summary)
+	}
+}
+
+func TestDetectAutoScanRequests(t *testing.T) {
+	reqs := detectAutoScanRequests([]string{
+		"infra/terraform.tfstate",
+		"plan/tfplan.json",
+		"deploy/docker-compose.yml",
+		"k8s/deployment.yaml",
+		"cloudformation/template.yaml",
+		"pulumi/stack.json",
+	})
+
+	want := map[string][]string{
+		"terraform":      {"infra/terraform.tfstate"},
+		"terraform-plan": {"plan/tfplan.json"},
+		"compose":        {"deploy/docker-compose.yml"},
+		"kubernetes":     {"k8s/deployment.yaml"},
+		"cloudformation": {"cloudformation/template.yaml"},
+		"pulumi":         {"pulumi/stack.json"},
+	}
+	if len(reqs) != len(want) {
+		t.Fatalf("detectAutoScanRequests returned %d request(s), want %d: %+v", len(reqs), len(want), reqs)
+	}
+	for _, req := range reqs {
+		paths, ok := want[req.Source]
+		if !ok {
+			t.Fatalf("unexpected source %q in %+v", req.Source, reqs)
+		}
+		if strings.Join(req.Paths, ",") != strings.Join(paths, ",") {
+			t.Fatalf("source %s paths = %v, want %v", req.Source, req.Paths, paths)
+		}
+	}
+}
+
 // --- graph nodes ---
 
 func TestGraphNodesCmd(t *testing.T) {

@@ -1,6 +1,17 @@
 # Scanners
 
-AIB ships with seven parsers. Each accepts multiple paths, and cross-file references are resolved automatically.
+AIB ships with seven parsers. Each accepts multiple paths, and cross-file references are resolved automatically. For CI and broad repository scans, `aib scan auto <path>` walks directories and groups supported files by scanner.
+
+## Auto Detection
+
+`scan auto` is a convenience command for pull requests and mixed IaC repositories. It detects Terraform state, Terraform plan JSON, Kubernetes YAML, Docker Compose, CloudFormation, Pulumi exports, and Ansible inventory/playbook files, then runs the underlying scanners against grouped paths.
+
+```bash
+aib scan auto .
+aib scan auto infra/ deploy/docker-compose.yml
+```
+
+Auto detection is conservative. Use explicit scanner commands when the repository has ambiguous YAML or generated files.
 
 ## Terraform State
 

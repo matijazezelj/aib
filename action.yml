@@ -1,0 +1,121 @@
+name: "AIB Infra Scan"
+description: "Scan IaC files with AIB and publish infrastructure graph/security reports."
+author: "matijazezelj"
+
+inputs:
+  paths:
+    description: "Newline or comma separated paths to scan."
+    required: false
+    default: "."
+  sources:
+    description: "Source scanner(s): auto, terraform, terraform-plan, kubernetes, compose, cloudformation, pulumi, ansible. Comma separated."
+    required: false
+    default: "auto"
+  aib-version:
+    description: "AIB release tag to download, or 'source' to build from this action checkout."
+    required: false
+    default: "source"
+  comment-pr:
+    description: "Create or update a PR comment with the Markdown report."
+    required: false
+    default: "true"
+  fail-on:
+    description: "Fail when findings exist at or above severity: none, critical, warning, info."
+    required: false
+    default: "critical"
+  upload-artifacts:
+    description: "Upload aib.db, aib-report.md, and aib-report.json as a workflow artifact."
+    required: false
+    default: "true"
+  artifact-name:
+    description: "Name for uploaded artifact."
+    required: false
+    default: "aib-report"
+  output-dir:
+    description: "Directory for generated reports."
+    required: false
+    default: ".aib"
+
+outputs:
+  findings-count:
+    description: "Total security findings."
+    value: ${{ steps.scan.outputs.findings-count }}
+  critical-count:
+    description: "Critical findings count."
+    value: ${{ steps.scan.outputs.critical-count }}
+  warning-count:
+    description: "Warning findings count."
+    value: ${{ steps.scan.outputs.warning-count }}
+  info-count:
+    description: "Info findings count."
+    value: ${{ steps.scan.outputs.info-count }}
+  nodes-count:
+    description: "Graph node count."
+    value: ${{ steps.scan.outputs.nodes-count }}
+  edges-count:
+    description: "Graph edge count."
+    value: ${{ steps.scan.outputs.edges-count }}
+  markdown-report-path:
+    description: "Path to the Markdown report."
+    value: ${{ steps.scan.outputs.markdown-report-path }}
+  json-report-path:
+    description: "Path to the JSON report."
+    value: ${{ steps.scan.outputs.json-report-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Go
+      if: ${{ inputs.aib-version == 'source' }}
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+
+    - name: Build AIB from source
+      if: ${{ inputs.aib-version == 'source' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_ACTION_REF:-dev}" -o "${RUNNER_TEMP}/aib" "${GITHUB_ACTION_PATH}/cmd/aib"
+        echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+    - name: Download AIB release
+      if: ${{ inputs.aib-version != 'source' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        os="linux"
+        arch="${RUNNER_ARCH,,}"
+        case "$arch" in
+          x64|amd64) arch="amd64" ;;
+          arm64|aarch64) arch="arm64" ;;
+          *) echo "Unsupported runner arch: ${RUNNER_ARCH}" >&2; exit 1 ;;
+        esac
+        url="https://github.com/matijazezelj/aib/releases/download/${{ inputs.aib-version }}/aib-${os}-${arch}"
+        curl -fsSL "$url" -o "${RUNNER_TEMP}/aib"
+        chmod +x "${RUNNER_TEMP}/aib"
+        echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+    - name: Run AIB scan
+      id: scan
+      shell: bash
+      env:
+        AIB_INPUT_PATHS: ${{ inputs.paths }}
+        AIB_INPUT_SOURCES: ${{ inputs.sources }}
+        AIB_INPUT_COMMENT_PR: ${{ inputs.comment-pr }}
+        AIB_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        AIB_INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: "${GITHUB_ACTION_PATH}/scripts/github-action.sh"
+
+    - name: Upload AIB artifacts
+      if: ${{ inputs.upload-artifacts == 'true' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          ${{ steps.scan.outputs.markdown-report-path }}
+          ${{ steps.scan.outputs.json-report-path }}
+          ${{ inputs.output-dir }}/aib.db
+        if-no-files-found: error
