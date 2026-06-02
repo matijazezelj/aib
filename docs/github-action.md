@@ -51,6 +51,7 @@ Use the release tag that contains the Action. After a moving `v1` major tag is p
 | `upload-artifacts` | `true` | Upload `aib.db`, `aib-report.md`, and `aib-report.json`. |
 | `artifact-name` | `aib-report` | Artifact name. |
 | `output-dir` | `.aib` | Directory for the SQLite DB and reports. |
+| `baseline-report` | empty | Optional previous AIB JSON report path. When set, Markdown/JSON reports include added/removed/changed assets and edges plus added/resolved findings. |
 
 ## Outputs
 
@@ -64,6 +65,33 @@ Use the release tag that contains the Action. After a moving `v1` major tag is p
 | `edges-count` | Graph edge count. |
 | `markdown-report-path` | Markdown report path. |
 | `json-report-path` | JSON report path. |
+| `added-assets-count` | Assets added compared with `baseline-report`. |
+| `removed-assets-count` | Assets removed compared with `baseline-report`. |
+| `changed-assets-count` | Assets changed compared with `baseline-report`. |
+| `added-findings-count` | Findings added compared with `baseline-report`. |
+| `resolved-findings-count` | Findings resolved compared with `baseline-report`. |
+
+## Baseline diffs
+
+Pass a previous `aib-report.json` artifact as `baseline-report` to turn the
+report into a PR-friendly delta instead of only a point-in-time inventory:
+
+```yaml
+- uses: actions/download-artifact@v6
+  id: baseline
+  with:
+    name: aib-report-main
+    path: .aib-baseline
+
+- uses: matijazezelj/aib@v1.4.4
+  with:
+    paths: .
+    sources: auto
+    baseline-report: .aib-baseline/aib-report.json
+```
+
+If the baseline file is configured but missing, the action fails clearly rather
+than silently pretending it compared something. Novel concept, apparently.
 
 ## Auto detection
 

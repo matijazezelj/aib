@@ -27,12 +27,16 @@ type infrastructureReport struct {
 	Scans            []graph.Scan                 `json:"scans"`
 	Audit            *graph.AuditReport           `json:"audit"`
 	CorrelatedAssets []graph.CorrelatedAssetGroup `json:"correlated_assets"`
+	Assets           []reportAsset                `json:"assets"`
+	Edges            []reportEdge                 `json:"edges"`
+	Diff             *reportDiff                  `json:"diff,omitempty"`
 	SampleNodes      []models.Node                `json:"sample_nodes"`
 }
 
 func (a *cliApp) reportCmd() *cobra.Command {
 	var format string
 	var outPath string
+	var baselinePath string
 	var maxNodes int
 
 	cmd := &cobra.Command{
@@ -52,6 +56,13 @@ func (a *cliApp) reportCmd() *cobra.Command {
 			report, err := buildInfrastructureReport(cmd.Context(), store, maxNodes)
 			if err != nil {
 				return err
+			}
+			if baselinePath != "" {
+				baseline, err := loadBaselineReport(baselinePath)
+				if err != nil {
+					return fmt.Errorf("loading baseline report: %w", err)
+				}
+				report.Diff = buildReportDiff(report, baseline, baselinePath)
 			}
 
 			var rendered []byte
@@ -78,6 +89,7 @@ func (a *cliApp) reportCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&format, "format", "markdown", "report format: markdown, json")
 	cmd.Flags().StringVar(&outPath, "out", "", "write report to file instead of stdout")
+	cmd.Flags().StringVar(&baselinePath, "baseline", "", "previous JSON report to diff against")
 	cmd.Flags().IntVar(&maxNodes, "max-nodes", 20, "maximum sample nodes to include")
 	return cmd
 }
@@ -104,9 +116,34 @@ func buildInfrastructureReport(ctx context.Context, store *graph.SQLiteStore, ma
 		return nil, err
 	}
 	nodesBySource := map[string]int{}
+	assets := make([]reportAsset, 0, len(nodes))
 	for _, node := range nodes {
 		nodesBySource[node.Source]++
+		assets = append(assets, reportAsset{
+			ID:       node.ID,
+			Name:     node.Name,
+			Type:     string(node.Type),
+			Source:   node.Source,
+			Provider: node.Provider,
+			Metadata: node.Metadata,
+		})
 	}
+	sort.Slice(assets, func(i, j int) bool { return assets[i].ID < assets[j].ID })
+	edges, err := store.ListEdges(ctx, graph.EdgeFilter{})
+	if err != nil {
+		return nil, err
+	}
+	reportEdges := make([]reportEdge, 0, len(edges))
+	for _, edge := range edges {
+		reportEdges = append(reportEdges, reportEdge{
+			ID:       edge.ID,
+			FromID:   edge.FromID,
+			ToID:     edge.ToID,
+			Type:     string(edge.Type),
+			Metadata: edge.Metadata,
+		})
+	}
+	sort.Slice(reportEdges, func(i, j int) bool { return reportEdges[i].ID < reportEdges[j].ID })
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 	if maxNodes >= 0 && len(nodes) > maxNodes {
 		nodes = nodes[:maxNodes]
@@ -136,6 +173,8 @@ func buildInfrastructureReport(ctx context.Context, store *graph.SQLiteStore, ma
 		Scans:            scans,
 		Audit:            audit,
 		CorrelatedAssets: correlatedAssets,
+		Assets:           assets,
+		Edges:            reportEdges,
 		SampleNodes:      nodes,
 	}, nil
 }
@@ -149,6 +188,26 @@ func renderInfrastructureMarkdown(r *infrastructureReport) string {
 	fmt.Fprintf(&b, "- Total edges: %d\n", r.TotalEdges)
 	fmt.Fprintf(&b, "- Security findings: %d (critical: %d, warning: %d, info: %d)\n",
 		r.Audit.Summary.Total, r.Audit.Summary.Critical, r.Audit.Summary.Warning, r.Audit.Summary.Info)
+	if r.Diff != nil {
+		fmt.Fprintf(&b, "- Diff vs baseline: assets +%d/-%d/~%d, edges +%d/-%d/~%d, findings +%d/-%d\n",
+			r.Diff.Summary.AddedAssets, r.Diff.Summary.RemovedAssets, r.Diff.Summary.ChangedAssets,
+			r.Diff.Summary.AddedEdges, r.Diff.Summary.RemovedEdges, r.Diff.Summary.ChangedEdges,
+			r.Diff.Summary.AddedFindings, r.Diff.Summary.ResolvedFindings)
+	}
+
+	if r.Diff != nil {
+		fmt.Fprintln(&b, "\n## Baseline Diff")
+		fmt.Fprintf(&b, "\nCompared with: `%s`\n", escapeMarkdownTable(r.Diff.BaselinePath))
+		fmt.Fprintln(&b, "\n| Area | Added | Removed/Resolved | Changed |")
+		fmt.Fprintln(&b, "|---|---:|---:|---:|")
+		fmt.Fprintf(&b, "| Assets | %d | %d | %d |\n", r.Diff.Summary.AddedAssets, r.Diff.Summary.RemovedAssets, r.Diff.Summary.ChangedAssets)
+		fmt.Fprintf(&b, "| Edges | %d | %d | %d |\n", r.Diff.Summary.AddedEdges, r.Diff.Summary.RemovedEdges, r.Diff.Summary.ChangedEdges)
+		fmt.Fprintf(&b, "| Findings | %d | %d | — |\n", r.Diff.Summary.AddedFindings, r.Diff.Summary.ResolvedFindings)
+		writeDiffList(&b, "Added assets", assetIDs(r.Diff.Assets.Added))
+		writeDiffList(&b, "Removed assets", assetIDs(r.Diff.Assets.Removed))
+		writeDiffList(&b, "Added findings", findingIDs(r.Diff.Findings.Added))
+		writeDiffList(&b, "Resolved findings", findingIDs(r.Diff.Findings.Resolved))
+	}
 
 	writeCountTable(&b, "Nodes by type", r.NodesByType)
 	writeCountTable(&b, "Nodes by source", r.NodesBySource)
@@ -220,6 +279,39 @@ func writeCountTable(b *strings.Builder, title string, counts map[string]int) {
 	for _, k := range keys {
 		fmt.Fprintf(b, "| %s | %d |\n", escapeMarkdownTable(k), counts[k])
 	}
+}
+
+func writeDiffList(b *strings.Builder, title string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n### %s\n\n", title)
+	limit := len(items)
+	if limit > 10 {
+		limit = 10
+	}
+	for i := 0; i < limit; i++ {
+		fmt.Fprintf(b, "- `%s`\n", escapeMarkdownTable(items[i]))
+	}
+	if len(items) > limit {
+		fmt.Fprintf(b, "- … and %d more\n", len(items)-limit)
+	}
+}
+
+func assetIDs(assets []reportAsset) []string {
+	ids := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		ids = append(ids, asset.ID)
+	}
+	return ids
+}
+
+func findingIDs(findings []findingKey) []string {
+	ids := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		ids = append(ids, fmt.Sprintf("%s:%s:%s", finding.Severity, finding.Rule, finding.ResourceID))
+	}
+	return ids
 }
 
 func escapeMarkdownTable(s string) string {

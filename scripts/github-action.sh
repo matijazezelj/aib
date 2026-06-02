@@ -48,8 +48,17 @@ for source in "${sources[@]}"; do
   esac
 done
 
-aib --db "$db_path" report --format markdown --out "$md_report"
-aib --db "$db_path" report --format json --out "$json_report"
+report_args=()
+if [ -n "${AIB_INPUT_BASELINE_REPORT:-}" ]; then
+  if [ ! -f "${AIB_INPUT_BASELINE_REPORT}" ]; then
+    echo "AIB baseline-report does not exist: ${AIB_INPUT_BASELINE_REPORT}" >&2
+    exit 2
+  fi
+  report_args+=(--baseline "${AIB_INPUT_BASELINE_REPORT}")
+fi
+
+aib --db "$db_path" report --format markdown --out "$md_report" "${report_args[@]}"
+aib --db "$db_path" report --format json --out "$json_report" "${report_args[@]}"
 
 stats=$(python3 - "$json_report" <<'PY'
 import json, sys
@@ -62,6 +71,12 @@ print(summary.get('warning', 0))
 print(summary.get('info', 0))
 print(data.get('total_nodes', 0))
 print(data.get('total_edges', 0))
+diff = data.get('diff', {}).get('summary', {})
+print(diff.get('added_assets', 0))
+print(diff.get('removed_assets', 0))
+print(diff.get('changed_assets', 0))
+print(diff.get('added_findings', 0))
+print(diff.get('resolved_findings', 0))
 PY
 )
 mapfile -t stat_lines <<< "$stats"
@@ -71,6 +86,11 @@ warning=${stat_lines[2]:-0}
 info=${stat_lines[3]:-0}
 nodes=${stat_lines[4]:-0}
 edges=${stat_lines[5]:-0}
+added_assets=${stat_lines[6]:-0}
+removed_assets=${stat_lines[7]:-0}
+changed_assets=${stat_lines[8]:-0}
+added_findings=${stat_lines[9]:-0}
+resolved_findings=${stat_lines[10]:-0}
 
 {
   echo "findings-count=$findings"
@@ -79,6 +99,11 @@ edges=${stat_lines[5]:-0}
   echo "info-count=$info"
   echo "nodes-count=$nodes"
   echo "edges-count=$edges"
+  echo "added-assets-count=$added_assets"
+  echo "removed-assets-count=$removed_assets"
+  echo "changed-assets-count=$changed_assets"
+  echo "added-findings-count=$added_findings"
+  echo "resolved-findings-count=$resolved_findings"
   echo "markdown-report-path=$md_report"
   echo "json-report-path=$json_report"
 } >> "$GITHUB_OUTPUT"

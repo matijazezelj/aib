@@ -142,6 +142,8 @@ aib graph audit
 aib -o json graph audit | jq '.findings[] | select(.severity == "critical")'
 aib report --format markdown --out aib-report.md
 aib report --format json --out aib-report.json
+# Compare against an earlier JSON report for PR-friendly added/removed/changed deltas
+aib report --format markdown --baseline previous-aib-report.json --out aib-diff.md
 ```
 
 The web UI highlights findings on nodes: red border for critical, orange for warning.

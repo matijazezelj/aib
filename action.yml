@@ -38,6 +38,10 @@ inputs:
     description: "Directory for generated reports."
     required: false
     default: ".aib"
+  baseline-report:
+    description: "Optional previous AIB JSON report path to diff against."
+    required: false
+    default: ""
 
 outputs:
   findings-count:
@@ -64,6 +68,21 @@ outputs:
   json-report-path:
     description: "Path to the JSON report."
     value: ${{ steps.scan.outputs.json-report-path }}
+  added-assets-count:
+    description: "Assets added compared with baseline-report."
+    value: ${{ steps.scan.outputs.added-assets-count }}
+  removed-assets-count:
+    description: "Assets removed compared with baseline-report."
+    value: ${{ steps.scan.outputs.removed-assets-count }}
+  changed-assets-count:
+    description: "Assets changed compared with baseline-report."
+    value: ${{ steps.scan.outputs.changed-assets-count }}
+  added-findings-count:
+    description: "Findings added compared with baseline-report."
+    value: ${{ steps.scan.outputs.added-findings-count }}
+  resolved-findings-count:
+    description: "Findings resolved compared with baseline-report."
+    value: ${{ steps.scan.outputs.resolved-findings-count }}
 
 runs:
   using: "composite"
@@ -109,6 +128,7 @@ runs:
         AIB_INPUT_COMMENT_PR: ${{ inputs.comment-pr }}
         AIB_INPUT_FAIL_ON: ${{ inputs.fail-on }}
         AIB_INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+        AIB_INPUT_BASELINE_REPORT: ${{ inputs.baseline-report }}
         GH_TOKEN: ${{ github.token }}
         GITHUB_TOKEN: ${{ github.token }}
       run: "${GITHUB_ACTION_PATH}/scripts/github-action.sh"

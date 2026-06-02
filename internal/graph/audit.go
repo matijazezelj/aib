@@ -30,7 +30,7 @@ type Finding struct {
 
 // AuditReport is the result of a full security audit.
 type AuditReport struct {
-	Findings []Finding `json:"findings"`
+	Findings []Finding    `json:"findings"`
 	Summary  AuditSummary `json:"summary"`
 }
 
@@ -94,6 +94,9 @@ func RunAudit(ctx context.Context, store Store) (*AuditReport, error) {
 		checkUnencryptedIngress,
 		checkMissingContainerResources,
 		checkAbsentEncryption,
+		checkMutableContainerImages,
+		checkComposeInitForLongRunningServices,
+		checkExposedServiceHealthchecks,
 	}
 
 	var all []Finding
@@ -254,8 +257,8 @@ func checkSingleAZDatabases(_ context.Context, nodes []models.Node, _ []models.E
 func checkPublicBuckets(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
 	var findings []Finding
 	publicACLs := map[string]bool{
-		"public-read":       true,
-		"public-read-write": true,
+		"public-read":        true,
+		"public-read-write":  true,
 		"authenticated-read": true,
 	}
 	for _, n := range nodes {
@@ -553,6 +556,96 @@ func checkAbsentEncryption(_ context.Context, nodes []models.Node, _ []models.Ed
 				Description: fmt.Sprintf("%s has no encryption configuration specified", n.Type),
 			})
 		}
+	}
+	return findings
+}
+
+// checkMutableContainerImages flags containers that use the implicit or explicit
+// latest tag. In CI this catches a very common "works until upstream changes"
+// footgun before it becomes archaeology with YAML.
+func checkMutableContainerImages(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
+	var findings []Finding
+	for _, n := range nodes {
+		if n.Type != models.AssetContainer && n.Type != models.AssetPod {
+			continue
+		}
+		image := metaValue(n.Metadata, "image")
+		if image == "" {
+			continue
+		}
+		if imageUsesLatestTag(image) {
+			findings = append(findings, Finding{
+				Severity:    SeverityWarning,
+				Rule:        "mutable-container-image",
+				ResourceID:  n.ID,
+				Resource:    n.Name,
+				Type:        string(n.Type),
+				Description: fmt.Sprintf("Container image %q uses a mutable latest tag", image),
+			})
+		}
+	}
+	return findings
+}
+
+func imageUsesLatestTag(image string) bool {
+	image = strings.TrimSpace(image)
+	if image == "" || strings.Contains(image, "@sha256:") {
+		return false
+	}
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon <= lastSlash {
+		return true
+	}
+	return image[lastColon+1:] == "latest"
+}
+
+// checkComposeInitForLongRunningServices flags Compose services that publish
+// ports or have a healthcheck but do not opt into tini via init: true. That is
+// where zombie healthcheck children tend to pile up. Ask me how I know.
+func checkComposeInitForLongRunningServices(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
+	var findings []Finding
+	for _, n := range nodes {
+		if n.Source != "compose" || n.Type != models.AssetContainer {
+			continue
+		}
+		if metaValue(n.Metadata, "ports", "healthcheck") == "" {
+			continue
+		}
+		if metaValue(n.Metadata, "init") == "true" {
+			continue
+		}
+		findings = append(findings, Finding{
+			Severity:    SeverityInfo,
+			Rule:        "compose-missing-init",
+			ResourceID:  n.ID,
+			Resource:    n.Name,
+			Type:        string(n.Type),
+			Description: "Compose service is long-running/exposed but does not set init: true",
+		})
+	}
+	return findings
+}
+
+// checkExposedServiceHealthchecks nudges users to add health evidence for
+// exposed services instead of merely proving that Docker managed to fork a PID.
+func checkExposedServiceHealthchecks(_ context.Context, nodes []models.Node, _ []models.Edge) []Finding {
+	var findings []Finding
+	for _, n := range nodes {
+		if n.Source != "compose" || n.Type != models.AssetContainer {
+			continue
+		}
+		if metaValue(n.Metadata, "ports") == "" || metaValue(n.Metadata, "healthcheck") == "true" {
+			continue
+		}
+		findings = append(findings, Finding{
+			Severity:    SeverityInfo,
+			Rule:        "exposed-service-no-healthcheck",
+			ResourceID:  n.ID,
+			Resource:    n.Name,
+			Type:        string(n.Type),
+			Description: "Compose service publishes ports but has no healthcheck evidence",
+		})
 	}
 	return findings
 }

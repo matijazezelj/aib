@@ -23,12 +23,14 @@ type composeFile struct {
 
 // composeService represents a single service in a Docker Compose file.
 type composeService struct {
-	Image      string            `yaml:"image"`
-	DependsOn  dependsOn         `yaml:"depends_on"`
-	Networks   serviceNetworks   `yaml:"networks"`
-	Volumes    []string          `yaml:"volumes"`
-	Ports      []string          `yaml:"ports"`
-	Environment any              `yaml:"environment"`
+	Image       string          `yaml:"image"`
+	DependsOn   dependsOn       `yaml:"depends_on"`
+	Networks    serviceNetworks `yaml:"networks"`
+	Volumes     []string        `yaml:"volumes"`
+	Ports       []string        `yaml:"ports"`
+	Init        any             `yaml:"init"`
+	Healthcheck any             `yaml:"healthcheck"`
+	Environment any             `yaml:"environment"`
 }
 
 // dependsOn handles both []string and map[string]{condition:...} forms.
@@ -180,6 +182,12 @@ func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
 		if len(svc.Ports) > 0 {
 			meta["ports"] = strings.Join(svc.Ports, ",")
 		}
+		if svc.Init != nil {
+			meta["init"] = fmt.Sprint(svc.Init)
+		}
+		if svc.Healthcheck != nil {
+			meta["healthcheck"] = "true"
+		}
 
 		result.Nodes = append(result.Nodes, models.Node{
 			ID:         nodeID,
@@ -235,10 +243,10 @@ func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
 			toID := "compose:container:" + dep
 			edgeID := fromID + "->depends_on->" + toID
 			result.Edges = append(result.Edges, models.Edge{
-				ID:       edgeID,
-				FromID:   fromID,
-				ToID:     toID,
-				Type:     models.EdgeDependsOn,
+				ID:     edgeID,
+				FromID: fromID,
+				ToID:   toID,
+				Type:   models.EdgeDependsOn,
 				Metadata: map[string]string{
 					"via":       "depends_on",
 					"raw_value": dep,
@@ -251,10 +259,10 @@ func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
 			toID := "compose:network:" + net
 			edgeID := fromID + "->connects_to->" + toID
 			result.Edges = append(result.Edges, models.Edge{
-				ID:       edgeID,
-				FromID:   fromID,
-				ToID:     toID,
-				Type:     models.EdgeConnectsTo,
+				ID:     edgeID,
+				FromID: fromID,
+				ToID:   toID,
+				Type:   models.EdgeConnectsTo,
 				Metadata: map[string]string{
 					"via":       "networks",
 					"raw_value": net,
@@ -277,10 +285,10 @@ func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
 			toID := "compose:volume:" + volName
 			edgeID := fromID + "->mounts_volume->" + toID
 			result.Edges = append(result.Edges, models.Edge{
-				ID:       edgeID,
-				FromID:   fromID,
-				ToID:     toID,
-				Type:     models.EdgeMountsVolume,
+				ID:     edgeID,
+				FromID: fromID,
+				ToID:   toID,
+				Type:   models.EdgeMountsVolume,
 				Metadata: map[string]string{
 					"via":       "volumes",
 					"raw_value": vol,

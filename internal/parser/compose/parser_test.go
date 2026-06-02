@@ -150,6 +150,42 @@ func TestParse_EdgeMetadata(t *testing.T) {
 	}
 }
 
+func TestParse_ServiceOperationalMetadata(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yml")
+	err := os.WriteFile(composePath, []byte(`services:
+  app:
+    image: ghcr.io/example/app:latest
+    init: true
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewComposeParser()
+	result, err := p.Parse(context.Background(), composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1", len(result.Nodes))
+	}
+	meta := result.Nodes[0].Metadata
+	if meta["init"] != "true" {
+		t.Errorf("init metadata = %q, want true", meta["init"])
+	}
+	if meta["healthcheck"] != "true" {
+		t.Errorf("healthcheck metadata = %q, want true", meta["healthcheck"])
+	}
+	if meta["ports"] != "8080:8080" {
+		t.Errorf("ports metadata = %q, want 8080:8080", meta["ports"])
+	}
+}
+
 func TestSupported(t *testing.T) {
 	p := NewComposeParser()
 

@@ -42,23 +42,23 @@ func seedAuditStore(t *testing.T) Store {
 			"acl": "private",
 		}, FirstSeen: now, LastSeen: now},
 		{ID: "vm:public", Name: "public-vm", Type: models.AssetVM, Source: "terraform", Metadata: map[string]string{
-			"public_ip":                    "54.100.200.1",
-			"associate_public_ip_address":  "true",
+			"public_ip":                   "54.100.200.1",
+			"associate_public_ip_address": "true",
 		}, FirstSeen: now, LastSeen: now},
 		{ID: "vm:private", Name: "private-vm", Type: models.AssetVM, Source: "terraform", Metadata: map[string]string{}, FirstSeen: now, LastSeen: now},
 		{ID: "pod:privileged", Name: "privileged-app", Type: models.AssetPod, Source: "kubernetes", Metadata: map[string]string{
-			"security.host_network":                  "true",
-			"security.host_pid":                      "true",
-			"security.main.privileged":               "true",
+			"security.host_network":                    "true",
+			"security.host_pid":                        "true",
+			"security.main.privileged":                 "true",
 			"security.main.allow_privilege_escalation": "true",
-			"security.main.run_as_non_root":          "false",
-			"security.main.read_only_root_fs":        "false",
+			"security.main.run_as_non_root":            "false",
+			"security.main.read_only_root_fs":          "false",
 		}, FirstSeen: now, LastSeen: now},
 		{ID: "pod:secure", Name: "secure-app", Type: models.AssetPod, Source: "kubernetes", Metadata: map[string]string{
-			"security.app.privileged":                  "false",
-			"security.app.allow_privilege_escalation":  "false",
-			"security.app.run_as_non_root":             "true",
-			"security.app.read_only_root_fs":           "true",
+			"security.app.privileged":                 "false",
+			"security.app.allow_privilege_escalation": "false",
+			"security.app.run_as_non_root":            "true",
+			"security.app.read_only_root_fs":          "true",
 		}, FirstSeen: now, LastSeen: now},
 		{ID: "svc:lb", Name: "public-lb", Type: models.AssetService, Source: "kubernetes", Metadata: map[string]string{
 			"service_type": "LoadBalancer",
@@ -207,6 +207,58 @@ func TestRunAudit(t *testing.T) {
 		}
 		if f.ResourceID == "secret:mounted" {
 			t.Errorf("mounted-secret should not have findings, got: %s", f.Description)
+		}
+	}
+}
+
+func TestContainerOperationalAuditChecks(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	nodes := []models.Node{
+		{ID: "compose:container:api", Name: "api", Type: models.AssetContainer, Source: "compose", Metadata: map[string]string{
+			"image": "ghcr.io/example/api:latest",
+			"ports": "8080:8080",
+		}, FirstSeen: now, LastSeen: now},
+		{ID: "compose:container:worker", Name: "worker", Type: models.AssetContainer, Source: "compose", Metadata: map[string]string{
+			"image":       "ghcr.io/example/worker@sha256:abcdef",
+			"healthcheck": "true",
+			"init":        "true",
+		}, FirstSeen: now, LastSeen: now},
+	}
+
+	ruleCount := make(map[string]int)
+	for _, check := range []AuditCheck{checkMutableContainerImages, checkComposeInitForLongRunningServices, checkExposedServiceHealthchecks} {
+		for _, finding := range check(ctx, nodes, nil) {
+			ruleCount[finding.Rule]++
+		}
+	}
+
+	if ruleCount["mutable-container-image"] != 1 {
+		t.Errorf("expected 1 mutable-container-image finding, got %d", ruleCount["mutable-container-image"])
+	}
+	if ruleCount["compose-missing-init"] != 1 {
+		t.Errorf("expected 1 compose-missing-init finding, got %d", ruleCount["compose-missing-init"])
+	}
+	if ruleCount["exposed-service-no-healthcheck"] != 1 {
+		t.Errorf("expected 1 exposed-service-no-healthcheck finding, got %d", ruleCount["exposed-service-no-healthcheck"])
+	}
+}
+
+func TestImageUsesLatestTag(t *testing.T) {
+	tests := []struct {
+		image string
+		want  bool
+	}{
+		{"nginx", true},
+		{"nginx:latest", true},
+		{"ghcr.io/org/app:latest", true},
+		{"ghcr.io/org/app:1.2.3", false},
+		{"registry:5000/app:1.2.3", false},
+		{"ghcr.io/org/app@sha256:abcdef", false},
+	}
+	for _, tt := range tests {
+		if got := imageUsesLatestTag(tt.image); got != tt.want {
+			t.Errorf("imageUsesLatestTag(%q) = %v, want %v", tt.image, got, tt.want)
 		}
 	}
 }
