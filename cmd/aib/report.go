@@ -18,15 +18,16 @@ import (
 )
 
 type infrastructureReport struct {
-	GeneratedAt   time.Time          `json:"generated_at"`
-	TotalNodes    int                `json:"total_nodes"`
-	TotalEdges    int                `json:"total_edges"`
-	NodesByType   map[string]int     `json:"nodes_by_type"`
-	EdgesByType   map[string]int     `json:"edges_by_type"`
-	NodesBySource map[string]int     `json:"nodes_by_source"`
-	Scans         []graph.Scan       `json:"scans"`
-	Audit         *graph.AuditReport `json:"audit"`
-	SampleNodes   []models.Node      `json:"sample_nodes"`
+	GeneratedAt      time.Time                    `json:"generated_at"`
+	TotalNodes       int                          `json:"total_nodes"`
+	TotalEdges       int                          `json:"total_edges"`
+	NodesByType      map[string]int               `json:"nodes_by_type"`
+	EdgesByType      map[string]int               `json:"edges_by_type"`
+	NodesBySource    map[string]int               `json:"nodes_by_source"`
+	Scans            []graph.Scan                 `json:"scans"`
+	Audit            *graph.AuditReport           `json:"audit"`
+	CorrelatedAssets []graph.CorrelatedAssetGroup `json:"correlated_assets"`
+	SampleNodes      []models.Node                `json:"sample_nodes"`
 }
 
 func (a *cliApp) reportCmd() *cobra.Command {
@@ -118,16 +119,24 @@ func buildInfrastructureReport(ctx context.Context, store *graph.SQLiteStore, ma
 	if err != nil {
 		return nil, err
 	}
+	correlatedAssets, err := graph.ListCorrelatedAssetGroups(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+	if correlatedAssets == nil {
+		correlatedAssets = []graph.CorrelatedAssetGroup{}
+	}
 	return &infrastructureReport{
-		GeneratedAt:   time.Now().UTC(),
-		TotalNodes:    nodeCount,
-		TotalEdges:    edgeCount,
-		NodesByType:   nodesByType,
-		EdgesByType:   edgesByType,
-		NodesBySource: nodesBySource,
-		Scans:         scans,
-		Audit:         audit,
-		SampleNodes:   nodes,
+		GeneratedAt:      time.Now().UTC(),
+		TotalNodes:       nodeCount,
+		TotalEdges:       edgeCount,
+		NodesByType:      nodesByType,
+		EdgesByType:      edgesByType,
+		NodesBySource:    nodesBySource,
+		Scans:            scans,
+		Audit:            audit,
+		CorrelatedAssets: correlatedAssets,
+		SampleNodes:      nodes,
 	}, nil
 }
 
@@ -144,6 +153,21 @@ func renderInfrastructureMarkdown(r *infrastructureReport) string {
 	writeCountTable(&b, "Nodes by type", r.NodesByType)
 	writeCountTable(&b, "Nodes by source", r.NodesBySource)
 	writeCountTable(&b, "Edges by type", r.EdgesByType)
+
+	fmt.Fprintln(&b, "\n## Correlated Assets")
+	if len(r.CorrelatedAssets) == 0 {
+		fmt.Fprintln(&b, "\nNo cross-source asset correlations found.")
+	} else {
+		fmt.Fprintln(&b, "\n| Identity | Sources | Assets |")
+		fmt.Fprintln(&b, "|---|---|---|")
+		for _, group := range r.CorrelatedAssets {
+			assets := make([]string, 0, len(group.Nodes))
+			for _, node := range group.Nodes {
+				assets = append(assets, escapeMarkdownTable(fmt.Sprintf("%s:%s:%s", node.Source, node.Type, node.Name)))
+			}
+			fmt.Fprintf(&b, "| `%s` | %s | `%s` |\n", escapeMarkdownTable(group.Key), escapeMarkdownTable(strings.Join(group.Sources, ", ")), strings.Join(assets, "`, `"))
+		}
+	}
 
 	fmt.Fprintln(&b, "\n## Security Findings")
 	if len(r.Audit.Findings) == 0 {

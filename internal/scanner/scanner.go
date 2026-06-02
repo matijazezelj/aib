@@ -100,6 +100,11 @@ func (s *Scanner) RunSync(ctx context.Context, req ScanRequest) ScanResult {
 		_ = s.store.UpdateScan(ctx, scanID, "failed", 0, 0)
 		return ScanResult{ScanID: scanID, Error: err}
 	}
+	if summary, err := graph.CorrelateIdentities(ctx, s.store); err != nil {
+		s.logger.Warn("failed to correlate cross-source identities", "error", err)
+	} else if summary.EdgesAdded > 0 {
+		s.logger.Info("correlated cross-source identities", "groups", summary.Groups, "edges_added", summary.EdgesAdded)
+	}
 
 	// Persist drift summary
 	if drift != nil {
@@ -182,6 +187,11 @@ func (s *Scanner) RunAsync(ctx context.Context, req ScanRequest) (int64, error) 
 			s.logger.Error("failed to store scan results", "scanID", scanID, "error", err)
 			_ = s.store.UpdateScan(asyncCtx, scanID, "failed", 0, 0)
 			return
+		}
+		if summary, err := graph.CorrelateIdentities(asyncCtx, s.store); err != nil {
+			s.logger.Warn("failed to correlate cross-source identities", "scanID", scanID, "error", err)
+		} else if summary.EdgesAdded > 0 {
+			s.logger.Info("correlated cross-source identities", "scanID", scanID, "groups", summary.Groups, "edges_added", summary.EdgesAdded)
 		}
 
 		// Persist drift summary
