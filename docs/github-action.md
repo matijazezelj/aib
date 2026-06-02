@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: matijazezelj/aib@v1
+      - uses: matijazezelj/aib@v1.4.0
         with:
           paths: |
             .
@@ -36,6 +36,8 @@ jobs:
           fail-on: critical
           upload-artifacts: true
 ```
+
+Use the release tag that contains the Action. After a moving `v1` major tag is published, `matijazezelj/aib@v1` is also suitable for users who prefer automatic minor updates.
 
 ## Inputs
 

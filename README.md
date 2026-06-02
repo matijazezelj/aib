@@ -49,13 +49,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: matijazezelj/aib@v1
+      - uses: matijazezelj/aib@v1.4.0
         with:
           paths: .
           sources: auto
           comment-pr: true
           fail-on: critical
 ```
+
+Use the release tag that contains the Action. After a moving `v1` major tag is published, `matijazezelj/aib@v1` is also suitable for users who prefer automatic minor updates.
 
 Full action docs: [docs/github-action.md](docs/github-action.md)
 
