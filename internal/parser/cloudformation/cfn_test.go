@@ -408,10 +408,3 @@ func TestSupported(t *testing.T) {
 		t.Error("non-CFN YAML should not be supported")
 	}
 }
-
-func TestParseCFN_Name(t *testing.T) {
-	p := NewCFNParser()
-	if p.Name() != "cloudformation" {
-		t.Errorf("Name() = %q, want %q", p.Name(), "cloudformation")
-	}
-}

@@ -2,8 +2,6 @@ package graph
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
@@ -103,28 +101,4 @@ func failSessionFactory(err error) sessionFactory {
 			},
 		}
 	}
-}
-
-// mockDriver implements neo4j.DriverWithContext for testing Close/Driver methods.
-// DriverWithContext is an interface with no unexported methods, so it's mockable.
-type mockDriver struct {
-	closed   bool
-	closeErr error
-}
-
-func (d *mockDriver) Close(_ context.Context) error {
-	d.closed = true
-	return d.closeErr
-}
-
-func (d *mockDriver) ExecuteQueryBookmarkManager() neo4j.BookmarkManager { return nil }
-func (d *mockDriver) IsEncrypted() bool                                  { return false }
-func (d *mockDriver) Target() url.URL                                    { return url.URL{} }
-func (d *mockDriver) NewSession(_ context.Context, _ neo4j.SessionConfig) neo4j.SessionWithContext {
-	return nil
-}
-func (d *mockDriver) VerifyAuthentication(_ context.Context, _ *neo4j.AuthToken) error { return nil }
-func (d *mockDriver) VerifyConnectivity(_ context.Context) error                       { return nil }
-func (d *mockDriver) GetServerInfo(_ context.Context) (neo4j.ServerInfo, error) {
-	return nil, fmt.Errorf("not implemented")
 }

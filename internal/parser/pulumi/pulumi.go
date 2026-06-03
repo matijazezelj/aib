@@ -45,11 +45,6 @@ func NewPulumiParser() *PulumiParser {
 	return &PulumiParser{}
 }
 
-// Name returns "pulumi".
-func (p *PulumiParser) Name() string {
-	return "pulumi"
-}
-
 // Supported returns true if the path is a Pulumi state JSON file.
 func (p *PulumiParser) Supported(path string) bool {
 	if !strings.HasSuffix(path, ".json") {

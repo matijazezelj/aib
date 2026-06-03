@@ -49,11 +49,6 @@ func NewMemgraphEngine(uri, username, password string, fallback *LocalEngine, lo
 	}, nil
 }
 
-// Driver returns the underlying neo4j driver for use by SyncedStore.
-func (e *MemgraphEngine) Driver() neo4j.DriverWithContext {
-	return e.driver
-}
-
 // Close closes the Memgraph driver connection.
 func (e *MemgraphEngine) Close() error {
 	return e.driver.Close(context.Background())

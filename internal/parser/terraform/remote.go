@@ -59,16 +59,6 @@ func pullStateBytes(ctx context.Context, projectDir, workspace string) ([]byte, 
 	return stdout.Bytes(), nil
 }
 
-// PullRemoteState runs `terraform state pull` in the given directory
-// and returns the parsed state as a ParseResult.
-func PullRemoteState(ctx context.Context, projectDir string, workspace string) (*parser.ParseResult, error) {
-	data, err := pullStateBytes(ctx, projectDir, workspace)
-	if err != nil {
-		return nil, err
-	}
-	return parseStateBytes(data, projectDir)
-}
-
 // PullRemoteMulti pulls state from multiple project directories with cross-state
 // edge resolution. When workspace is "*", all workspaces are pulled from each path.
 func PullRemoteMulti(ctx context.Context, projectDirs []string, workspace string) (*parser.ParseResult, error) {
@@ -162,22 +152,6 @@ func ListWorkspaces(ctx context.Context, projectDir string) ([]string, error) {
 		}
 	}
 	return workspaces, nil
-}
-
-// PullAllWorkspaces pulls state from all workspaces in a project with
-// cross-workspace edge resolution.
-func PullAllWorkspaces(ctx context.Context, projectDir string) (*parser.ParseResult, error) {
-	return PullRemoteMulti(ctx, []string{projectDir}, "*")
-}
-
-// parseStateBytes parses raw JSON state bytes (shared between local and remote).
-// It builds a local ref map and resolves edges within the single file.
-func parseStateBytes(data []byte, sourcePath string) (*parser.ParseResult, error) {
-	refs, err := buildRefMap(data)
-	if err != nil {
-		return nil, err
-	}
-	return parseStateBytesWithRefs(data, sourcePath, refs)
 }
 
 // buildRefMap performs the first pass over a state file: builds a mapping

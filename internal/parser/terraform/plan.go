@@ -46,11 +46,6 @@ func NewPlanParser() *PlanParser {
 	return &PlanParser{}
 }
 
-// Name returns "terraform-plan".
-func (p *PlanParser) Name() string {
-	return "terraform-plan"
-}
-
 // Supported returns true if the path is a JSON file containing a format_version field.
 func (p *PlanParser) Supported(path string) bool {
 	if !strings.HasSuffix(path, ".json") {
@@ -261,8 +256,8 @@ func determinePlanAction(actions []string) string {
 	return actions[0]
 }
 
-// ParsePlanBytes parses raw plan JSON bytes (exported for testing).
-func ParsePlanBytes(data []byte, sourcePath string) (*parser.ParseResult, error) {
+// parsePlanBytes parses raw plan JSON bytes.
+func parsePlanBytes(data []byte, sourcePath string) (*parser.ParseResult, error) {
 	refs, err := buildPlanRefMap(data)
 	if err != nil {
 		return nil, err

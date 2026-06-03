@@ -20,11 +20,6 @@ func NewStateParser() *StateParser {
 	return &StateParser{}
 }
 
-// Name returns "terraform".
-func (p *StateParser) Name() string {
-	return "terraform"
-}
-
 // Supported returns true if the path is a .tfstate file or a directory containing one.
 func (p *StateParser) Supported(path string) bool {
 	info, err := os.Stat(path)
@@ -147,14 +142,6 @@ type tfResource struct {
 type tfInstance struct {
 	Attributes    map[string]any `json:"attributes"`
 	Dependencies  []string       `json:"dependencies"`
-}
-
-func parseStateFile(path string) (*parser.ParseResult, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- paths validated by SafeResolvePath
-	if err != nil {
-		return nil, fmt.Errorf("reading file: %w", err)
-	}
-	return parseStateBytes(data, path)
 }
 
 func mapResourceType(tfType string) models.AssetType {

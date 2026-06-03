@@ -246,12 +246,6 @@ func TestParseAlternateNames(t *testing.T) {
 	}
 }
 
-func TestName(t *testing.T) {
-	p := NewComposeParser()
-	if p.Name() != "compose" {
-		t.Errorf("name = %q, want compose", p.Name())
-	}
-}
 
 func TestParseBadYAML(t *testing.T) {
 	dir := t.TempDir()

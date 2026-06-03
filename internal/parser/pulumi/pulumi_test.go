@@ -9,12 +9,6 @@ import (
 	"github.com/matijazezelj/aib/pkg/models"
 )
 
-func TestPulumiParser_Name(t *testing.T) {
-	p := NewPulumiParser()
-	if got := p.Name(); got != "pulumi" {
-		t.Errorf("Name() = %q, want %q", got, "pulumi")
-	}
-}
 
 func TestPulumiParser_Supported(t *testing.T) {
 	p := NewPulumiParser()

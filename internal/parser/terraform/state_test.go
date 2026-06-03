@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/matijazezelj/aib/internal/parser"
 	"github.com/matijazezelj/aib/pkg/models"
 )
 
@@ -44,7 +45,7 @@ func TestParseStateFile_Sample(t *testing.T) {
 }
 
 func TestParseStateFile_Edges(t *testing.T) {
-	result, err := parseStateFile("testdata/sample.tfstate")
+	result, err := NewStateParser().Parse(context.Background(), "testdata/sample.tfstate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestParseStateFile_Edges(t *testing.T) {
 }
 
 func TestParseStateFile_EdgeMetadata(t *testing.T) {
-	result, err := parseStateFile("testdata/sample.tfstate")
+	result, err := NewStateParser().Parse(context.Background(), "testdata/sample.tfstate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestParseStateFile_EdgeMetadata(t *testing.T) {
 }
 
 func TestParseStateFile_Metadata(t *testing.T) {
-	result, err := parseStateFile("testdata/sample.tfstate")
+	result, err := NewStateParser().Parse(context.Background(), "testdata/sample.tfstate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestParseStateFile_Metadata(t *testing.T) {
 }
 
 func TestParseStateFile_SourceField(t *testing.T) {
-	result, err := parseStateFile("testdata/sample.tfstate")
+	result, err := NewStateParser().Parse(context.Background(), "testdata/sample.tfstate")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestExtractMetadata(t *testing.T) {
 }
 
 func TestParseStateBytes_InvalidJSON(t *testing.T) {
-	_, err := parseStateBytes([]byte("{invalid"), "test.tfstate")
+	_, err := parseStateBytesForTest([]byte("{invalid"), "test.tfstate")
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -386,19 +387,12 @@ func TestParseStateBytes_DataResourceSkipped(t *testing.T) {
 		}]
 	}`
 
-	result, err := parseStateBytes([]byte(state), "test.tfstate")
+	result, err := parseStateBytesForTest([]byte(state), "test.tfstate")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(result.Nodes) != 0 {
 		t.Errorf("data resources should be skipped, got %d nodes", len(result.Nodes))
-	}
-}
-
-func TestStateParser_Name(t *testing.T) {
-	p := NewStateParser()
-	if got := p.Name(); got != "terraform" {
-		t.Errorf("Name() = %q, want %q", got, "terraform")
 	}
 }
 
@@ -595,7 +589,7 @@ func TestParseMulti_UnreadableFile(t *testing.T) {
 }
 
 func TestParseStateFile_NonexistentFile(t *testing.T) {
-	_, err := parseStateFile("/nonexistent/missing.tfstate")
+	_, err := NewStateParser().Parse(context.Background(), "/nonexistent/missing.tfstate")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
@@ -660,4 +654,12 @@ func TestParseStateCert_UnresolvableAttributeEdge(t *testing.T) {
 			t.Errorf("should not have connects_to edge from orphan-subnet, got via=%s to=%s", e.Metadata["via"], e.ToID)
 		}
 	}
+}
+
+func parseStateBytesForTest(data []byte, sourcePath string) (*parser.ParseResult, error) {
+	refs, err := buildRefMap(data)
+	if err != nil {
+		return nil, err
+	}
+	return parseStateBytesWithRefs(data, sourcePath, refs)
 }
