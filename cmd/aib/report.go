@@ -205,6 +205,10 @@ func renderInfrastructureMarkdown(r *infrastructureReport) string {
 		fmt.Fprintf(&b, "| Findings | %d | %d | — |\n", r.Diff.Summary.AddedFindings, r.Diff.Summary.ResolvedFindings)
 		writeDiffList(&b, "Added assets", assetIDs(r.Diff.Assets.Added))
 		writeDiffList(&b, "Removed assets", assetIDs(r.Diff.Assets.Removed))
+		writeDiffList(&b, "Changed assets", assetChangeIDs(r.Diff.Assets.Changed))
+		writeDiffList(&b, "Added edges", edgeIDs(r.Diff.Edges.Added))
+		writeDiffList(&b, "Removed edges", edgeIDs(r.Diff.Edges.Removed))
+		writeDiffList(&b, "Changed edges", edgeChangeIDs(r.Diff.Edges.Changed))
 		writeDiffList(&b, "Added findings", findingIDs(r.Diff.Findings.Added))
 		writeDiffList(&b, "Resolved findings", findingIDs(r.Diff.Findings.Resolved))
 	}
@@ -304,6 +308,37 @@ func assetIDs(assets []reportAsset) []string {
 		ids = append(ids, asset.ID)
 	}
 	return ids
+}
+
+func assetChangeIDs(changes []assetChange) []string {
+	ids := make([]string, 0, len(changes))
+	for _, change := range changes {
+		ids = append(ids, change.After.ID)
+	}
+	return ids
+}
+
+func edgeIDs(edges []reportEdge) []string {
+	ids := make([]string, 0, len(edges))
+	for _, edge := range edges {
+		ids = append(ids, edgeDisplayID(edge))
+	}
+	return ids
+}
+
+func edgeChangeIDs(changes []edgeChange) []string {
+	ids := make([]string, 0, len(changes))
+	for _, change := range changes {
+		ids = append(ids, edgeDisplayID(change.After))
+	}
+	return ids
+}
+
+func edgeDisplayID(edge reportEdge) string {
+	if edge.ID != "" {
+		return edge.ID
+	}
+	return fmt.Sprintf("%s->%s->%s", edge.FromID, edge.Type, edge.ToID)
 }
 
 func findingIDs(findings []findingKey) []string {

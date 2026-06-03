@@ -65,12 +65,16 @@ func TestRenderInfrastructureMarkdownIncludesDiff(t *testing.T) {
 				AddedFindings:    4,
 				ResolvedFindings: 5,
 			},
-			Assets:   assetDiff{Added: []reportAsset{{ID: "asset:new"}}},
+			Assets: assetDiff{
+				Added:   []reportAsset{{ID: "asset:new"}},
+				Changed: []assetChange{{After: reportAsset{ID: "asset:changed"}}},
+			},
+			Edges:    edgeDiff{Added: []reportEdge{{FromID: "asset:new", Type: "depends_on", ToID: "asset:changed"}}},
 			Findings: findingsDiff{Added: []findingKey{{Severity: "critical", Rule: "new-rule", ResourceID: "asset:new"}}},
 		},
 	}
 	md := renderInfrastructureMarkdown(report)
-	for _, want := range []string{"## Baseline Diff", "assets +1/-2/~3", "`asset:new`", "critical:new-rule:asset:new"} {
+	for _, want := range []string{"## Baseline Diff", "assets +1/-2/~3", "`asset:new`", "`asset:changed`", "asset:new->depends_on->asset:changed", "critical:new-rule:asset:new"} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, md)
 		}
