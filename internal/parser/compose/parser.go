@@ -96,11 +96,6 @@ func NewComposeParser() *ComposeParser {
 	return &ComposeParser{}
 }
 
-// Name returns "compose".
-func (p *ComposeParser) Name() string {
-	return "compose"
-}
-
 // Supported returns true if the path is a Docker Compose file or a directory containing one.
 func (p *ComposeParser) Supported(path string) bool {
 	info, err := os.Stat(path)

@@ -7,13 +7,6 @@ import (
 	"testing"
 )
 
-func TestPlanParser_Name(t *testing.T) {
-	p := NewPlanParser()
-	if got := p.Name(); got != "terraform-plan" {
-		t.Errorf("Name() = %q, want %q", got, "terraform-plan")
-	}
-}
-
 func TestPlanParser_Supported(t *testing.T) {
 	p := NewPlanParser()
 
@@ -58,7 +51,7 @@ func TestParsePlanBytes_CreateActions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, testdata)
+	result, err := parsePlanBytes(data, testdata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +94,7 @@ func TestParsePlanBytes_MixedActions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, testdata)
+	result, err := parsePlanBytes(data, testdata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +139,7 @@ func TestParsePlanBytes_DataSource(t *testing.T) {
 		}]
 	}`)
 
-	result, err := ParsePlanBytes(data, "test.json")
+	result, err := parsePlanBytes(data, "test.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +162,7 @@ func TestParsePlanBytes_UnmappedType(t *testing.T) {
 		}]
 	}`)
 
-	result, err := ParsePlanBytes(data, "test.json")
+	result, err := parsePlanBytes(data, "test.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +227,7 @@ func TestPlanParser_Parse(t *testing.T) {
 }
 
 func TestParsePlanBytes_InvalidJSON(t *testing.T) {
-	_, err := ParsePlanBytes([]byte("not json"), "test.json")
+	_, err := parsePlanBytes([]byte("not json"), "test.json")
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -248,7 +241,7 @@ func TestRealisticPlan_NodeCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +266,7 @@ func TestRealisticPlan_AllActions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +306,7 @@ func TestRealisticPlan_NodeTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +345,7 @@ func TestRealisticPlan_AttributeEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +405,7 @@ func TestRealisticPlan_Metadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +464,7 @@ func TestRealisticPlan_SkipsNoOpAndData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +493,7 @@ func TestRealisticPlan_UnmappedTypeWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +517,7 @@ func TestRealisticPlan_NodeIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,7 +622,7 @@ func TestRealisticPlan_DeleteNodeUsesBeforeState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +648,7 @@ func TestRealisticPlan_ReplaceNodeUsesAfterState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -678,7 +671,7 @@ func TestRealisticPlan_SourceFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ParsePlanBytes(data, "testdata/plan_realistic.json")
+	result, err := parsePlanBytes(data, "testdata/plan_realistic.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +763,7 @@ func TestParsePlanBytes_NullAfterAndBefore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ParsePlanBytes(data, "testdata/plan_null_attrs.json")
+	result, err := parsePlanBytes(data, "testdata/plan_null_attrs.json")
 	if err != nil {
 		t.Fatal(err)
 	}

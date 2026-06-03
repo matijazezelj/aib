@@ -21,11 +21,6 @@ func NewK8sParser(valuesFile string) *K8sParser {
 	return &K8sParser{ValuesFile: valuesFile}
 }
 
-// Name returns "kubernetes".
-func (p *K8sParser) Name() string {
-	return "kubernetes"
-}
-
 // Supported returns true if the path is a YAML file, Helm chart, or directory with manifests.
 func (p *K8sParser) Supported(path string) bool {
 	info, err := os.Stat(path)

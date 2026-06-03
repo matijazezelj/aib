@@ -69,11 +69,6 @@ func NewCFNParser() *CFNParser {
 	return &CFNParser{}
 }
 
-// Name returns "cloudformation".
-func (p *CFNParser) Name() string {
-	return "cloudformation"
-}
-
 // Supported returns true if the path is a CloudFormation template.
 func (p *CFNParser) Supported(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))

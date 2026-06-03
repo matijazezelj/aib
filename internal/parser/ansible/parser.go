@@ -23,11 +23,6 @@ func NewAnsibleParser(playbookDir string) *AnsibleParser {
 	return &AnsibleParser{PlaybookDir: playbookDir}
 }
 
-// Name returns "ansible".
-func (p *AnsibleParser) Name() string {
-	return "ansible"
-}
-
 // Supported returns true if the path contains Ansible inventory files.
 func (p *AnsibleParser) Supported(path string) bool {
 	info, err := os.Stat(path)

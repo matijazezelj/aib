@@ -14,12 +14,6 @@ func TestNewK8sParser(t *testing.T) {
 	}
 }
 
-func TestK8sParser_Name(t *testing.T) {
-	p := NewK8sParser("")
-	if got := p.Name(); got != "kubernetes" {
-		t.Errorf("Name() = %q, want %q", got, "kubernetes")
-	}
-}
 
 func TestK8sParser_Supported_YAMLFile(t *testing.T) {
 	p := NewK8sParser("")
