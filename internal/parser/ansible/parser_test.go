@@ -209,3 +209,135 @@ func TestParse_InferredDependenciesFromInventoryVars(t *testing.T) {
 		t.Error("missing web2 -> k8s redis connects_to edge")
 	}
 }
+
+func nodeMap(nodes []models.Node) map[string]models.Node {
+	m := make(map[string]models.Node, len(nodes))
+	for _, n := range nodes {
+		m[n.ID] = n
+	}
+	return m
+}
+
+func TestRedactCredentials(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "url password is redacted, host and database preserved",
+			in:   "postgres://admin:SuperSecret123@10.0.0.5:5432/prod",
+			want: "postgres://admin:REDACTED@10.0.0.5:5432/prod",
+		},
+		{
+			name: "mysql url",
+			in:   "mysql://root:hunter2@db.internal:3306/app",
+			want: "mysql://root:REDACTED@db.internal:3306/app",
+		},
+		{
+			name: "url without credentials is untouched",
+			in:   "postgres://10.0.0.5:5432/prod",
+			want: "postgres://10.0.0.5:5432/prod",
+		},
+		{
+			name: "username without password is untouched",
+			in:   "postgres://admin@10.0.0.5:5432/prod",
+			want: "postgres://admin@10.0.0.5:5432/prod",
+		},
+		{
+			name: "secret query parameter is redacted",
+			in:   "postgres://10.0.0.5:5432/prod?sslmode=require&password=hunter2",
+			want: "postgres://10.0.0.5:5432/prod?password=REDACTED&sslmode=require",
+		},
+		{
+			name: "libpq keyword form",
+			in:   "host=10.0.0.5 port=5432 user=admin password=hunter2 dbname=prod",
+			want: "host=10.0.0.5 port=5432 user=admin password=REDACTED dbname=prod",
+		},
+		{
+			name: "keyword form without secret is untouched",
+			in:   "host=10.0.0.5 port=5432 dbname=prod",
+			want: "host=10.0.0.5 port=5432 dbname=prod",
+		},
+		{
+			name: "password with url-illegal characters still redacted",
+			in:   "postgres://admin:pa ss|wo rd@10.0.0.5:5432/prod",
+			want: "postgres://admin:REDACTED@10.0.0.5:5432/prod",
+		},
+		{
+			name: "empty string",
+			in:   "",
+			want: "",
+		},
+		{
+			name: "plain host:port is untouched",
+			in:   "10.0.0.5:5432",
+			want: "10.0.0.5:5432",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := redactCredentials(tt.in); got != tt.want {
+				t.Errorf("redactCredentials(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// Inventory credentials reach aib.db, JSON reports, and /api/v1/graph, and the
+// GitHub Action publishes the first two as CI artifacts. No parser output may
+// carry the raw password.
+func TestParse_InventoryCredentialsAreNotPersisted(t *testing.T) {
+	p := NewAnsibleParser("")
+	result, err := p.Parse(context.Background(), "testdata/inventory_secrets.ini")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secrets := []string{"SuperSecret123", "VaultPass456", "BecomePass789", "TokenAbc000"}
+
+	var dbNode *models.Node
+	for i := range result.Nodes {
+		for key, v := range result.Nodes[i].Metadata {
+			for _, secret := range secrets {
+				if strings.Contains(v, secret) {
+					t.Errorf("node %s leaked %s via metadata[%q] = %q", result.Nodes[i].ID, secret, key, v)
+				}
+			}
+		}
+		if result.Nodes[i].Type == models.AssetDatabase {
+			dbNode = &result.Nodes[i]
+		}
+	}
+	for _, e := range result.Edges {
+		for key, v := range e.Metadata {
+			for _, secret := range secrets {
+				if strings.Contains(v, secret) {
+					t.Errorf("edge %s leaked %s via metadata[%q] = %q", e.ID, secret, key, v)
+				}
+			}
+		}
+	}
+
+	// The host node keeps the var keys — only the values are replaced, so the
+	// graph still shows that a credential is configured.
+	web1, ok := nodeMap(result.Nodes)["ansible:vm:web1"]
+	if !ok {
+		t.Fatal("missing ansible:vm:web1")
+	}
+	if web1.Metadata["ansible_password"] != "REDACTED" {
+		t.Errorf("ansible_password = %q, want REDACTED", web1.Metadata["ansible_password"])
+	}
+	if web1.Metadata["ansible_host"] != "192.168.1.10" {
+		t.Errorf("ansible_host = %q, want the non-secret value preserved", web1.Metadata["ansible_host"])
+	}
+
+	if dbNode == nil {
+		t.Fatal("expected an inferred database node from database_url")
+	}
+	cs := dbNode.Metadata["connection_string"]
+	if cs != "postgres://admin:REDACTED@192.168.1.20:5432/exampledb" {
+		t.Errorf("connection_string = %q, want the redacted DSN", cs)
+	}
+}

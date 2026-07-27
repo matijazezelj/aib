@@ -3,8 +3,10 @@ package ansible
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -313,6 +315,8 @@ func buildInferredDatabaseNode(h hostEntry, varKey, rawTarget, resolvedTarget st
 	connectionString := firstNonEmpty(h.vars["db_connection_string"], h.vars["database_url"], h.vars["connection_string"])
 	if connectionString == "" {
 		connectionString = fmt.Sprintf("%s://%s:%s/%s", dbScheme, hostAddress, dbPort, dbName)
+	} else {
+		connectionString = redactCredentials(connectionString)
 	}
 
 	dbNodeID := fmt.Sprintf("ansible:database:%s@%s", sanitizeNodePart(dbName), sanitizeNodePart(hostLabel))
@@ -336,6 +340,100 @@ func buildInferredDatabaseNode(h hostEntry, varKey, rawTarget, resolvedTarget st
 	}
 
 	return dbNodeID, node
+}
+
+// redactedValue is deliberately alphanumeric: url.String and url.Values.Encode
+// percent-encode punctuation, which would turn a "***" placeholder into "%2A%2A%2A".
+const redactedValue = "REDACTED"
+
+// userinfoPattern matches the "scheme://user:password@" prefix of a DSN. It is a
+// fallback for values url.Parse rejects — a password containing characters that
+// are illegal in a URL still has to be redacted.
+var userinfoPattern = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+.\-]*://)([^/@]*):([^/@]*)@`)
+
+// secretKeyParts are matched as substrings, so "pass" covers Ansible's
+// ansible_password, ansible_become_pass, ansible_ssh_pass, and vault_pass in one
+// entry. This over-matches on names like "passenger_port"; redacting a harmless
+// value is a far cheaper mistake than persisting a live credential.
+var secretKeyParts = []string{"pass", "pwd", "secret", "token", "apikey", "api_key", "credential", "private_key"}
+
+// redactCredentials strips passwords from an operator-supplied connection string.
+//
+// Inventory vars like database_url routinely embed real credentials, and this
+// value is persisted to the graph — which reaches aib.db, JSON reports, and
+// /api/v1/graph. The GitHub Action publishes the first two as CI artifacts, so
+// an unredacted DSN becomes world-readable on a public repo. Host, port, and
+// database name are preserved; only the secret is replaced.
+func redactCredentials(cs string) string {
+	if strings.TrimSpace(cs) == "" {
+		return cs
+	}
+
+	if u, err := url.Parse(cs); err == nil && u.Scheme != "" {
+		return redactURL(cs, u)
+	}
+
+	if userinfoPattern.MatchString(cs) {
+		return userinfoPattern.ReplaceAllString(cs, "${1}${2}:"+redactedValue+"@")
+	}
+
+	return redactKeywordDSN(cs)
+}
+
+// redactURL replaces the userinfo password and any secret-bearing query
+// parameter. It returns orig untouched when there is nothing to redact, so
+// well-formed values are not reserialized into a different-looking string.
+func redactURL(orig string, u *url.URL) string {
+	changed := false
+
+	if u.User != nil {
+		if _, hasPassword := u.User.Password(); hasPassword {
+			u.User = url.UserPassword(u.User.Username(), redactedValue)
+			changed = true
+		}
+	}
+
+	query := u.Query()
+	for key := range query {
+		if isSecretKey(key) {
+			query.Set(key, redactedValue)
+			changed = true
+		}
+	}
+
+	if !changed {
+		return orig
+	}
+	u.RawQuery = query.Encode()
+	return u.String()
+}
+
+// redactKeywordDSN handles the libpq-style "host=db password=hunter2" form,
+// which Ansible inventories use as often as URL-shaped DSNs.
+func redactKeywordDSN(cs string) string {
+	fields := strings.Fields(cs)
+	changed := false
+	for i, field := range fields {
+		key, _, ok := strings.Cut(field, "=")
+		if ok && isSecretKey(key) {
+			fields[i] = key + "=" + redactedValue
+			changed = true
+		}
+	}
+	if !changed {
+		return cs
+	}
+	return strings.Join(fields, " ")
+}
+
+func isSecretKey(key string) bool {
+	lowered := strings.ToLower(key)
+	for _, part := range secretKeyParts {
+		if strings.Contains(lowered, part) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstNonEmpty(values ...string) string {
@@ -451,10 +549,18 @@ func inferProvider(h hostEntry) string {
 	return "local"
 }
 
+// buildHostMetadata copies inventory vars onto the host node. Inventory is
+// operator-authored and freely holds ansible_password, become passwords, vault
+// tokens, and DSNs, so values are redacted both by key name and by shape before
+// they are persisted. See redactCredentials for where this data ends up.
 func buildHostMetadata(h hostEntry) map[string]string {
 	meta := make(map[string]string)
 	for k, v := range h.vars {
-		meta[k] = v
+		if isSecretKey(k) {
+			meta[k] = redactedValue
+			continue
+		}
+		meta[k] = redactCredentials(v)
 	}
 	if len(h.groups) > 0 {
 		sort.Strings(h.groups)
