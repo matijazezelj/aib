@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: matijazezelj/aib@v1.4.4
+      - uses: matijazezelj/aib@v1.5.0
         with:
           paths: |
             .
@@ -48,7 +48,8 @@ Use the release tag that contains the Action. After a moving `v1` major tag is p
 | `aib-version` | `source` | `source` builds the CLI from the action checkout. Set a release tag such as `v1.2.3` to download a release binary. |
 | `comment-pr` | `true` | Create or update a PR comment using marker `<!-- aib-report -->`. Requires `pull-requests: write`. |
 | `fail-on` | `critical` | Fail the job for findings at or above `critical`, `warning`, or `info`. Use `none` to never fail on findings. |
-| `upload-artifacts` | `true` | Upload `aib.db`, `aib-report.md`, and `aib-report.json`. |
+| `upload-artifacts` | `true` | Upload `aib-report.md` and `aib-report.json`. On a public repository, workflow artifacts are downloadable by anyone. |
+| `upload-database` | `false` | Also upload `aib.db` (as `<artifact-name>-db`). It contains the full asset graph including all extracted metadata, so it is off by default. |
 | `artifact-name` | `aib-report` | Artifact name. |
 | `output-dir` | `.aib` | Directory for the SQLite DB and reports. |
 | `baseline-report` | empty | Optional previous AIB JSON report path. When set, Markdown/JSON reports include added/removed/changed assets and edges plus added/resolved findings. |
@@ -83,7 +84,7 @@ report into a PR-friendly delta instead of only a point-in-time inventory:
     name: aib-report-main
     path: .aib-baseline
 
-- uses: matijazezelj/aib@v1.4.4
+- uses: matijazezelj/aib@v1.5.0
   with:
     paths: .
     sources: auto
@@ -114,6 +115,14 @@ The action is read-only by default:
 - No cloud credentials are required.
 - AIB parses files already present in the checked-out repository.
 - PR comments contain summarized graph/audit data, not raw parsed file bodies.
-- The SQLite DB and JSON report may contain resource names and metadata from your IaC; keep artifacts private for private infrastructure.
+- The JSON report contains resource names and metadata from your IaC. On a public repository, workflow artifacts are downloadable by anyone — keep `upload-artifacts: false` if that inventory is sensitive.
+- `aib.db` holds the full asset graph and is **not** uploaded unless you set `upload-database: true`.
+- Release binaries are verified against the published `checksums.txt` before execution.
 
-For public repositories, prefer `fail-on: critical` and review artifacts before making them broadly available. Secret redaction is a parser responsibility; don't put raw secret values in IaC and then act surprised when tools can see them. That's not a scanner problem, that's a "why is this in Git" problem.
+### Secret redaction
+
+Parsers redact credentials before anything is written to the graph, by key name (`password`, `*_pass`, `*_token`, `secret`, `api_key`, …) and by value shape (URL DSNs, libpq keyword DSNs, secret-bearing query parameters). Host, port, database, username, and the key names survive so the graph still shows that a credential is configured.
+
+This is defence in depth, not a licence to commit secrets. Redaction is deliberately biased toward over-matching, but it cannot recognise a credential stored under an innocuous key with no recognisable shape. Keep secrets out of IaC and inventory files.
+
+Versions **≤ v1.4.5 did not redact at all**. If you ran those against Ansible inventories, treat previously uploaded artifacts and existing `aib.db` files as containing plaintext credentials — upgrading does not sanitize data already written.

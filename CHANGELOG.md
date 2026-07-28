@@ -2,6 +2,31 @@
 
 All notable changes to AIB are documented here. See [GitHub Releases](https://github.com/matijazezelj/aib/releases) for download links.
 
+## [1.5.0] - 2026-07-28
+
+### Security
+- **Credential redaction across all parsers**. Operator-authored key/value pairs were copied verbatim into node metadata, which is persisted to `aib.db`, JSON reports, and `GET /api/v1/graph`.
+  - Ansible: every inventory var landed on the host node, including `ansible_password`, `ansible_become_pass`, `ansible_ssh_pass`, and vault tokens. The inferred database node also stored `database_url` / `db_connection_string` / `connection_string` with the DSN password intact.
+  - Terraform, CloudFormation, Pulumi: resource tag values leaked (tags named `api_key`, `secret_token`, and similar).
+  - Kubernetes: label values leaked across all seven label sites.
+  - Values are now redacted by key name and by value shape. URL DSNs, libpq keyword DSNs (`host=x password=y`), and secret-bearing query parameters are all handled; host, port, database, username, and the key names themselves are preserved.
+  - Docker Compose was already unaffected, as were the attribute allowlists in Terraform/CloudFormation/Pulumi and Kubernetes Secret `data:`.
+- **The GitHub Action no longer uploads `aib.db` by default.** It contains the full asset graph, and on a public repository workflow artifacts are downloadable by anyone. Moved behind a new `upload-database` input, default `false`. Reports continue to upload by default, since baseline diffs depend on them.
+- **The Action now verifies the downloaded release binary** against the published `checksums.txt` before making it executable. Previously it executed an unverified download.
+- **`GET /api/v1/graph` is capped at 5000 nodes by default.** It previously serialized the entire graph into a single response body (~12 MB at 10k nodes) with a rate-limit burst of 20, making it a cheap memory-amplification vector.
+
+### Fixed
+- The Markdown findings table is capped at 100 rows, ordered by severity. It is posted as a PR comment, and GitHub rejects bodies over 65536 characters — 900 findings produced a 97 KB body, which failed the API call and aborted the Action *after* a successful scan. The JSON report is never truncated.
+- `GET /api/v1/graph` no longer returns edges whose endpoints fall outside the response, and now reports `total_nodes`, `total_edges`, and `truncated` so a partial graph cannot be mistaken for a complete one. The web UI shows a banner when the view is truncated.
+
+### Added
+- Microsoft Teams alerter with configurable webhook URL.
+
+### Upgrade notes
+- If your workflow consumed `aib.db` from the uploaded artifact, set `upload-database: true` to restore it.
+- If an API client relied on `GET /api/v1/graph` returning every node, pass `?limit=0`.
+- **Anyone who ran v1.4.5 or earlier against an Ansible inventory should treat previously uploaded workflow artifacts and existing `aib.db` files as containing plaintext credentials.** This release only protects future scans; it does not sanitize data already written.
+
 ## [1.1.0] - 2026-02-17
 
 ### Added
