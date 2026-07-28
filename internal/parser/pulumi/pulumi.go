@@ -333,14 +333,14 @@ func extractPulumiMetadata(res pulumiResource) map[string]string {
 	// Tags map
 	if tags, ok := merged["tags"].(map[string]any); ok {
 		for k, v := range tags {
-			meta["tag:"+k] = fmt.Sprintf("%v", v)
+			meta["tag:"+k] = parser.RedactMetadataValue(k, fmt.Sprintf("%v", v))
 		}
 	}
 
 	// Labels map
 	if labels, ok := merged["labels"].(map[string]any); ok {
 		for k, v := range labels {
-			meta["label:"+k] = fmt.Sprintf("%v", v)
+			meta["label:"+k] = parser.RedactMetadataValue(k, fmt.Sprintf("%v", v))
 		}
 	}
 

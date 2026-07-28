@@ -387,13 +387,13 @@ func extractMetadata(resourceType string, attrs map[string]any) map[string]strin
 
 	if tags, ok := attrs["tags"].(map[string]any); ok {
 		for k, v := range tags {
-			meta["tag:"+k] = fmt.Sprintf("%v", v)
+			meta["tag:"+k] = parser.RedactMetadataValue(k, fmt.Sprintf("%v", v))
 		}
 	}
 
 	if labels, ok := attrs["labels"].(map[string]any); ok {
 		for k, v := range labels {
-			meta["label:"+k] = fmt.Sprintf("%v", v)
+			meta["label:"+k] = parser.RedactMetadataValue(k, fmt.Sprintf("%v", v))
 		}
 	}
 

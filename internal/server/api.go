@@ -86,8 +86,26 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "aib_build_info{version=%q} 1\n", s.version)
 }
 
+// maxGraphNodes caps a single /api/v1/graph response. The endpoint serializes
+// the whole graph in one allocation — at 10k nodes that is a ~12 MB body, and
+// the rate limiter permits a burst of 20, so an uncapped endpoint is a cheap
+// memory-amplification vector. Callers that need everything can raise the cap
+// with ?limit=0, which is why this is a default rather than a hard ceiling.
+const maxGraphNodes = 5000
+
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	limit := maxGraphNodes
+	if l := r.URL.Query().Get("limit"); l != "" {
+		parsed, err := strconv.Atoi(l)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "limit must be a non-negative integer")
+			return
+		}
+		limit = parsed
+	}
+
 	nodes, err := s.store.ListNodes(ctx, graph.NodeFilter{})
 	if err != nil {
 		s.logger.Error("listing nodes", "error", err)
@@ -108,9 +126,31 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		edges = []models.Edge{}
 	}
 
+	totalNodes, totalEdges := len(nodes), len(edges)
+	truncated := limit > 0 && totalNodes > limit
+	if truncated {
+		nodes = nodes[:limit]
+		// Keep only edges whose endpoints both survive, so the client never
+		// receives an edge pointing at a node it was not given.
+		kept := make(map[string]bool, len(nodes))
+		for _, n := range nodes {
+			kept[n.ID] = true
+		}
+		filtered := make([]models.Edge, 0, len(edges))
+		for _, e := range edges {
+			if kept[e.FromID] && kept[e.ToID] {
+				filtered = append(filtered, e)
+			}
+		}
+		edges = filtered
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes": nodes,
-		"edges": edges,
+		"nodes":       nodes,
+		"edges":       edges,
+		"total_nodes": totalNodes,
+		"total_edges": totalEdges,
+		"truncated":   truncated,
 	})
 }
 

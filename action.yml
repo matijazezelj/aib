@@ -27,9 +27,13 @@ inputs:
     required: false
     default: "critical"
   upload-artifacts:
-    description: "Upload aib.db, aib-report.md, and aib-report.json as a workflow artifact."
+    description: "Upload aib-report.md and aib-report.json as a workflow artifact. On a public repository these are downloadable by anyone."
     required: false
     default: "true"
+  upload-database:
+    description: "Also upload aib.db. It holds the full asset graph including all extracted metadata; on a public repository that is world-readable. Off by default."
+    required: false
+    default: "false"
   artifact-name:
     description: "Name for uploaded artifact."
     required: false
@@ -114,8 +118,25 @@ runs:
           arm64|aarch64) arch="arm64" ;;
           *) echo "Unsupported runner arch: ${RUNNER_ARCH}" >&2; exit 1 ;;
         esac
-        url="https://github.com/matijazezelj/aib/releases/download/${{ inputs.aib-version }}/aib-${os}-${arch}"
-        curl -fsSL "$url" -o "${RUNNER_TEMP}/aib"
+        asset="aib-${os}-${arch}"
+        base="https://github.com/matijazezelj/aib/releases/download/${{ inputs.aib-version }}"
+        curl -fsSL "${base}/${asset}" -o "${RUNNER_TEMP}/${asset}"
+
+        # Verify against the release checksums before making the binary executable.
+        # Without this the action would run an unverified binary as root on the runner.
+        curl -fsSL "${base}/checksums.txt" -o "${RUNNER_TEMP}/checksums.txt"
+        expected=$(awk -v a="$asset" '$2 == a || $2 == "*"a { print $1 }' "${RUNNER_TEMP}/checksums.txt")
+        if [ -z "$expected" ]; then
+          echo "No checksum published for ${asset} in ${{ inputs.aib-version }}" >&2
+          exit 1
+        fi
+        actual=$(sha256sum "${RUNNER_TEMP}/${asset}" | awk '{print $1}')
+        if [ "$expected" != "$actual" ]; then
+          echo "Checksum mismatch for ${asset}: expected ${expected}, got ${actual}" >&2
+          exit 1
+        fi
+
+        mv "${RUNNER_TEMP}/${asset}" "${RUNNER_TEMP}/aib"
         chmod +x "${RUNNER_TEMP}/aib"
         echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
 
@@ -141,5 +162,12 @@ runs:
         path: |
           ${{ steps.scan.outputs.markdown-report-path }}
           ${{ steps.scan.outputs.json-report-path }}
-          ${{ inputs.output-dir }}/aib.db
+        if-no-files-found: error
+
+    - name: Upload AIB database
+      if: ${{ inputs.upload-database == 'true' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ inputs.artifact-name }}-db
+        path: ${{ inputs.output-dir }}/aib.db
         if-no-files-found: error

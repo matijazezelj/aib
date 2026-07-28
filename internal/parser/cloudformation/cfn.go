@@ -420,7 +420,7 @@ func extractCFNMetadata(res cfnResource) map[string]string {
 				k, _ := tag["Key"].(string)
 				v, _ := tag["Value"].(string)
 				if k != "" {
-					meta["tag:"+k] = v
+					meta["tag:"+k] = parser.RedactMetadataValue(k, v)
 				}
 			}
 		}

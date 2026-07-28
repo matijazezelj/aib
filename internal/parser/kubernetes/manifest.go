@@ -326,7 +326,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				meta["images"] = strings.Join(images, ",")
 			}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 
 			// Security context extraction
@@ -399,7 +399,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				meta["ports"] = strings.Join(ports, ",")
 			}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 
 			node := models.Node{
@@ -435,7 +435,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				meta["ingress_class"] = res.Spec.IngressClass
 			}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 
 			node := models.Node{
@@ -461,7 +461,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				meta["type"] = strings.TrimSpace(res.Type)
 			}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 
 			node := models.Node{
@@ -522,7 +522,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				"namespace": ns,
 			}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 
 			node := models.Node{
@@ -571,7 +571,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 				meta["secret_name"] = res.Spec.SecretName
 			}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 
 			var expiresAt *time.Time
@@ -601,7 +601,7 @@ func parseManifests(data []byte, sourceFile string, now time.Time) (*parser.Pars
 			nodeID := k8sNodeID("serviceaccount", ns, res.Metadata.Name)
 			meta := map[string]string{"namespace": ns}
 			for k, v := range res.Metadata.Labels {
-				meta["label:"+k] = v
+				meta["label:"+k] = parser.RedactMetadataValue(k, v)
 			}
 			node := models.Node{
 				ID: nodeID, Name: res.Metadata.Name, Type: models.AssetServiceAccount,

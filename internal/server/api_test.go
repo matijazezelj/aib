@@ -1765,3 +1765,88 @@ func TestRateLimiter(t *testing.T) {
 		t.Error("expected 429 after exceeding rate limit")
 	}
 }
+
+// An uncapped /api/v1/graph serialized the whole graph in one body (~12 MB at
+// 10k nodes) with a rate-limit burst of 20, making it a memory-amplification
+// vector. The cap must never silently hand back a partial graph.
+func TestHandleGraph_LimitTruncatesAndSignals(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph?limit=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Nodes      []json.RawMessage `json:"nodes"`
+		Edges      []json.RawMessage `json:"edges"`
+		TotalNodes int               `json:"total_nodes"`
+		TotalEdges int               `json:"total_edges"`
+		Truncated  bool              `json:"truncated"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Nodes) != 1 {
+		t.Errorf("nodes = %d, want 1", len(result.Nodes))
+	}
+	if !result.Truncated {
+		t.Error("truncated = false, want true — a partial graph must say so")
+	}
+	if result.TotalNodes != 2 {
+		t.Errorf("total_nodes = %d, want 2", result.TotalNodes)
+	}
+	// The single surviving node cannot satisfy both endpoints of the seeded edge.
+	if len(result.Edges) != 0 {
+		t.Errorf("edges = %d, want 0 — edges must not dangle past the cap", len(result.Edges))
+	}
+}
+
+func TestHandleGraph_LimitZeroReturnsEverything(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	resp, err := http.Get(ts.URL + "/api/v1/graph?limit=0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	var result struct {
+		Nodes     []json.RawMessage `json:"nodes"`
+		Edges     []json.RawMessage `json:"edges"`
+		Truncated bool              `json:"truncated"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Nodes) != 2 || len(result.Edges) != 1 {
+		t.Errorf("nodes = %d, edges = %d, want 2 and 1", len(result.Nodes), len(result.Edges))
+	}
+	if result.Truncated {
+		t.Error("truncated = true, want false with limit=0")
+	}
+}
+
+func TestHandleGraph_InvalidLimit(t *testing.T) {
+	ts, store := newTestServer(t, "")
+	seedTestData(t, store)
+
+	for _, bad := range []string{"abc", "-1"} {
+		resp, err := http.Get(ts.URL + "/api/v1/graph?limit=" + bad)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("limit=%q status = %d, want 400", bad, resp.StatusCode)
+		}
+		resp.Body.Close() //nolint:errcheck // test cleanup
+	}
+}

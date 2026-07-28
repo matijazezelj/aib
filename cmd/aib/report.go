@@ -94,6 +94,36 @@ func (a *cliApp) reportCmd() *cobra.Command {
 	return cmd
 }
 
+// maxMarkdownFindings caps the rendered findings table. The Markdown report is
+// posted as a PR comment by the GitHub Action, and GitHub rejects comment bodies
+// over 65536 characters — an uncapped table on a large estate produced a ~97 KB
+// body, which failed the API call and aborted the whole action. The JSON report
+// is never truncated.
+const maxMarkdownFindings = 100
+
+// sortFindingsBySeverity returns a copy ordered critical → warning → info so a
+// truncated table shows the findings that matter. The caller's slice, and the
+// order used by the JSON report and baseline diffs, are left untouched.
+func sortFindingsBySeverity(findings []graph.Finding) []graph.Finding {
+	rank := map[graph.Severity]int{
+		graph.SeverityCritical: 0,
+		graph.SeverityWarning:  1,
+		graph.SeverityInfo:     2,
+	}
+	sorted := make([]graph.Finding, len(findings))
+	copy(sorted, findings)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if rank[sorted[i].Severity] != rank[sorted[j].Severity] {
+			return rank[sorted[i].Severity] < rank[sorted[j].Severity]
+		}
+		if sorted[i].ResourceID != sorted[j].ResourceID {
+			return sorted[i].ResourceID < sorted[j].ResourceID
+		}
+		return sorted[i].Rule < sorted[j].Rule
+	})
+	return sorted
+}
+
 func buildInfrastructureReport(ctx context.Context, store *graph.SQLiteStore, maxNodes int) (*infrastructureReport, error) {
 	nodeCount, err := store.NodeCount(ctx)
 	if err != nil {
@@ -236,10 +266,18 @@ func renderInfrastructureMarkdown(r *infrastructureReport) string {
 	if len(r.Audit.Findings) == 0 {
 		fmt.Fprintln(&b, "\nNo security findings.")
 	} else {
+		findings := sortFindingsBySeverity(r.Audit.Findings)
+		limit := len(findings)
+		if limit > maxMarkdownFindings {
+			limit = maxMarkdownFindings
+		}
 		fmt.Fprintln(&b, "\n| Severity | Rule | Resource | Description |")
 		fmt.Fprintln(&b, "|---|---|---|---|")
-		for _, f := range r.Audit.Findings {
+		for _, f := range findings[:limit] {
 			fmt.Fprintf(&b, "| %s | %s | `%s` | %s |\n", f.Severity, escapeMarkdownTable(f.Rule), escapeMarkdownTable(f.ResourceID), escapeMarkdownTable(f.Description))
+		}
+		if len(findings) > limit {
+			fmt.Fprintf(&b, "\n… and %d more finding(s). The JSON report contains the full list.\n", len(findings)-limit)
 		}
 	}
 

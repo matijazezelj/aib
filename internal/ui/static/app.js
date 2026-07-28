@@ -781,6 +781,25 @@ async function copyTextToClipboard(text) {
     document.body.removeChild(temp);
 }
 
+// --- Truncation notice ---
+
+// The graph endpoint caps how many nodes it returns. A partial graph must never
+// look like a complete one — blast radius and orphan counts read as authoritative.
+function showTruncationWarning(gd) {
+    const existing = document.getElementById('truncation-warning');
+    if (existing) existing.remove();
+    if (!gd || !gd.truncated) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'truncation-warning';
+    banner.setAttribute('role', 'alert');
+    banner.textContent =
+        `Showing ${(gd.nodes || []).length} of ${gd.total_nodes} assets. ` +
+        `This view is incomplete — blast radius and orphan results are not authoritative. ` +
+        `Use the CLI or request ?limit=0 for the full graph.`;
+    document.body.prepend(banner);
+}
+
 // --- Init ---
 
 async function init() {
@@ -790,6 +809,7 @@ async function init() {
         fetchJSON(`${API}/graph/analysis/audit`).catch(() => null),
     ]);
     graphData = gd;
+    showTruncationWarning(gd);
 
     // Index audit findings by node ID, keeping the worst severity per node
     auditData = audit;
@@ -1717,6 +1737,7 @@ function startAutoRefresh(intervalMs) {
     autoRefreshTimer = setInterval(async () => {
         try {
             const gd = await fetchJSON(`${API}/graph`);
+            showTruncationWarning(gd);
             const prevNodeCount = (graphData.nodes || []).length;
             const prevEdgeCount = (graphData.edges || []).length;
             if (gd.nodes?.length !== prevNodeCount || gd.edges?.length !== prevEdgeCount) {
