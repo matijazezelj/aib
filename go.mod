@@ -1,13 +1,13 @@
 module github.com/matijazezelj/aib
 
-go 1.25.7
+go 1.26.0
 
 require (
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.yaml.in/yaml/v3 v3.0.4
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.54.0
 )
