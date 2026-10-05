@@ -65,14 +65,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 				}
 				s.logger.Info("starting scheduled scan")
 				results := s.scanner.RunAllConfigured(ctx)
-				for _, r := range results {
-					if r.Error != nil {
-						s.logger.Error("scheduled scan failed", "scanID", r.ScanID, "error", r.Error)
-					} else {
-						s.logger.Info("scheduled scan completed",
-							"scanID", r.ScanID, "nodes", r.NodesFound, "edges", r.EdgesFound)
-					}
-				}
+				LogResults(s.logger, "scheduled", results)
 			case <-s.stopCh:
 				return
 			case <-ctx.Done():

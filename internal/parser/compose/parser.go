@@ -16,6 +16,7 @@ import (
 
 // composeFile represents the top-level structure of a Docker Compose file.
 type composeFile struct {
+	Include  includeList               `yaml:"include"`
 	Services map[string]composeService `yaml:"services"`
 	Networks map[string]any            `yaml:"networks"`
 	Volumes  map[string]any            `yaml:"volumes"`
@@ -26,8 +27,8 @@ type composeService struct {
 	Image       string          `yaml:"image"`
 	DependsOn   dependsOn       `yaml:"depends_on"`
 	Networks    serviceNetworks `yaml:"networks"`
-	Volumes     []string        `yaml:"volumes"`
-	Ports       []string        `yaml:"ports"`
+	Volumes     volumeList      `yaml:"volumes"`
+	Ports       portList        `yaml:"ports"`
 	Init        any             `yaml:"init"`
 	Healthcheck any             `yaml:"healthcheck"`
 	Environment any             `yaml:"environment"`
@@ -160,7 +161,98 @@ func (p *ComposeParser) Parse(ctx context.Context, path string) (*parser.ParseRe
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	return buildGraph(cf, path), nil
+	var warnings []string
+	visited := map[string]bool{path: true}
+	if err := p.mergeIncludes(&cf, path, filepath.Dir(path), visited, 0, &warnings); err != nil {
+		return nil, err
+	}
+
+	result := buildGraph(cf, path)
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
+}
+
+// maxIncludeDepth bounds `include:` recursion. Compose itself has no limit, but
+// a cyclic or absurdly nested tree is a configuration error here, not something
+// to follow until the stack runs out.
+const maxIncludeDepth = 8
+
+// mergeIncludes folds the services, networks and volumes of every `include:`d
+// file into cf. Included files must stay inside root (the directory of the file
+// the scan started from), so a compose file cannot make the scanner read
+// arbitrary paths. Problems become warnings, not failures: one broken include
+// should not hide the rest of the estate.
+func (p *ComposeParser) mergeIncludes(cf *composeFile, from, root string, visited map[string]bool, depth int, warnings *[]string) error {
+	if len(cf.Include) == 0 {
+		return nil
+	}
+	if depth >= maxIncludeDepth {
+		*warnings = append(*warnings, fmt.Sprintf("%s: include depth limit (%d) reached, deeper includes skipped", from, maxIncludeDepth))
+		return nil
+	}
+	for _, entry := range cf.Include {
+		if len(entry.Paths) == 0 {
+			continue
+		}
+		rel := entry.Paths[0]
+		target := rel
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(from), rel)
+		}
+		resolved, err := parser.SafeResolvePath(target)
+		if err != nil {
+			*warnings = append(*warnings, fmt.Sprintf("%s: include %q not readable: %v", from, rel, err))
+			continue
+		}
+		if r, err := filepath.Rel(root, resolved); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			*warnings = append(*warnings, fmt.Sprintf("%s: include %q is outside the scanned directory, skipped", from, rel))
+			continue
+		}
+		if visited[resolved] {
+			continue
+		}
+		visited[resolved] = true
+		data, err := os.ReadFile(resolved) // #nosec G304 -- confined to root above
+		if err != nil {
+			*warnings = append(*warnings, fmt.Sprintf("%s: include %q: %v", from, rel, err))
+			continue
+		}
+		var inc composeFile
+		if err := yaml.Unmarshal(data, &inc); err != nil {
+			*warnings = append(*warnings, fmt.Sprintf("%s: include %q does not parse: %v", from, rel, err))
+			continue
+		}
+		if err := p.mergeIncludes(&inc, resolved, root, visited, depth+1, warnings); err != nil {
+			return err
+		}
+		if cf.Services == nil {
+			cf.Services = map[string]composeService{}
+		}
+		for k, v := range inc.Services {
+			if _, exists := cf.Services[k]; exists {
+				*warnings = append(*warnings, fmt.Sprintf("service %q defined in both %s and an include; keeping the first", k, from))
+				continue
+			}
+			cf.Services[k] = v
+		}
+		if cf.Networks == nil {
+			cf.Networks = map[string]any{}
+		}
+		for k, v := range inc.Networks {
+			if _, ok := cf.Networks[k]; !ok {
+				cf.Networks[k] = v
+			}
+		}
+		if cf.Volumes == nil {
+			cf.Volumes = map[string]any{}
+		}
+		for k, v := range inc.Volumes {
+			if _, ok := cf.Volumes[k]; !ok {
+				cf.Volumes[k] = v
+			}
+		}
+	}
+	return nil
 }
 
 func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
@@ -197,8 +289,27 @@ func buildGraph(cf composeFile, sourceFile string) *parser.ParseResult {
 		})
 	}
 
-	// Create network nodes
+	// Compose creates a "default" network implicitly: services that name no
+	// network join it, and it is never declared in the file. Any other network
+	// that a service references without declaring it is also materialised, so
+	// edges never point at a node that does not exist (which the store rejects
+	// with a foreign key error, dropping the whole scan).
+	networks := map[string]bool{}
 	for name := range cf.Networks {
+		networks[name] = true
+	}
+	for name, svc := range cf.Services {
+		if len(svc.Networks.Names) == 0 {
+			svc.Networks.Names = []string{"default"}
+			cf.Services[name] = svc
+		}
+		for _, n := range svc.Networks.Names {
+			networks[n] = true
+		}
+	}
+
+	// Create network nodes
+	for name := range networks {
 		nodeID := "compose:network:" + name
 		result.Nodes = append(result.Nodes, models.Node{
 			ID:         nodeID,
