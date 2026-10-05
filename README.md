@@ -82,7 +82,7 @@ AIB ships with seven parsers. Pass multiple paths to any scanner; cross-file ref
 | **Terraform plan** | Same as state | `tf:` | Pre-deploy impact; actions classified as create/update/delete/replace |
 | **Kubernetes / Helm** | Workloads, Services, Ingresses, Secrets, ConfigMaps, Certificates | `k8s:` | Security contexts, selector edges, env-var-based `connects_to` inference, live cluster scanning |
 | **Ansible** | Hosts, containers, services | `ansible:` | Inventory-var dependency inference (`db_host`, `redis_host`, `k8s_service`), connection strings |
-| **Docker Compose** | Services, networks, volumes | `compose:` | `depends_on`, network membership, volume mounts |
+| **Docker Compose** | Services, networks, volumes (`include:` files followed; short and long port/volume syntax; implicit `default` network) | `compose:` | `depends_on`, network membership, volume mounts |
 | **CloudFormation** | ~40 (AWS) | `cfn:` | `Ref`, `Fn::GetAtt`, `DependsOn`, property references |
 | **Pulumi** | ~80 (AWS/GCP/Azure/K8s/TLS) | `plm:` | Dependency arrays, attribute refs, parent URNs |
 

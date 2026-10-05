@@ -175,9 +175,12 @@ func Load(cfgFile string) (*Config, error) {
 		}
 	}
 
+	// UnmarshalExact rejects keys that map to no field. Without it a typo such
+	// as `docker_compose:` (the key is `compose:`) is dropped silently: the
+	// scan then covers nothing and still reports success.
 	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshaling config: %w", err)
+	if err := viper.UnmarshalExact(&cfg); err != nil {
+		return nil, fmt.Errorf("unknown or invalid key in config (check spelling against configs/aib.yaml.example): %w", err)
 	}
 
 	// Expand ${ENV_VAR} references in sensitive string fields.

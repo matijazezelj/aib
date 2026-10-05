@@ -1405,16 +1405,10 @@ func (a *cliApp) serveCmd() *cobra.Command {
 			if cfg.Scan.OnStartup && len(cfg.Sources.Terraform)+len(cfg.Sources.Kubernetes)+len(cfg.Sources.Ansible)+len(cfg.Sources.Compose) > 0 {
 				go func() {
 					a.logger.Info("running startup scan")
-					results := sc.RunAllConfigured(ctx)
-					for _, r := range results {
-						if r.Error != nil {
-							a.logger.Error("startup scan failed", "error", r.Error)
-						} else {
-							a.logger.Info("startup scan completed", "scanID", r.ScanID,
-								"nodes", r.NodesFound, "edges", r.EdgesFound)
-						}
-					}
+					scanner.LogResults(a.logger, "startup", sc.RunAllConfigured(ctx))
 				}()
+			} else if cfg.Scan.OnStartup {
+				a.logger.Warn("startup scan enabled but no sources are configured: the graph will stay empty until a scan is triggered")
 			}
 
 			// Scheduled cert probing

@@ -429,3 +429,24 @@ func (s *Scanner) scanAnsible(ctx context.Context, req ScanRequest) (*parser.Par
 
 	return merged, nil
 }
+
+// LogResults reports scan outcomes. A scan that succeeded but found zero
+// assets is logged as a warning, not as "completed": it nearly always means a
+// wrong path, an unsupported file shape or a mis-spelled source, and it must
+// not look like a healthy scan. Parser warnings are surfaced too.
+func LogResults(logger *slog.Logger, kind string, results []ScanResult) {
+	for _, r := range results {
+		for _, w := range r.Warnings {
+			logger.Warn(kind+" scan warning", "scanID", r.ScanID, "warning", w)
+		}
+		switch {
+		case r.Error != nil:
+			logger.Error(kind+" scan failed", "scanID", r.ScanID, "error", r.Error)
+		case r.NodesFound == 0:
+			logger.Warn(kind+" scan found no assets: check the configured path and file format",
+				"scanID", r.ScanID, "nodes", 0, "edges", r.EdgesFound)
+		default:
+			logger.Info(kind+" scan completed", "scanID", r.ScanID, "nodes", r.NodesFound, "edges", r.EdgesFound)
+		}
+	}
+}

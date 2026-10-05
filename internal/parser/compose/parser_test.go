@@ -171,10 +171,19 @@ func TestParse_ServiceOperationalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Nodes) != 1 {
-		t.Fatalf("nodes = %d, want 1", len(result.Nodes))
+	// One container, plus the implicit "default" network it joins.
+	if len(result.Nodes) != 2 {
+		t.Fatalf("nodes = %d, want 2 (container + implicit default network)", len(result.Nodes))
 	}
-	meta := result.Nodes[0].Metadata
+	var meta map[string]string
+	for _, n := range result.Nodes {
+		if n.ID == "compose:container:app" {
+			meta = n.Metadata
+		}
+	}
+	if meta == nil {
+		t.Fatal("container node not found")
+	}
 	if meta["init"] != "true" {
 		t.Errorf("init metadata = %q, want true", meta["init"])
 	}

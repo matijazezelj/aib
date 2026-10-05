@@ -21,6 +21,8 @@ sources:
   ansible:
     - inventory: "/path/to/ansible/inventory"
       playbooks: "/path/to/ansible/playbooks"
+  compose:                             # key is `compose`, not `docker_compose`; unknown keys are rejected
+    - path: "/path/to/docker-compose.yml"   # a file, or a directory containing compose.yml; `include:` files are followed
 
 certs:
   probe_enabled: true
