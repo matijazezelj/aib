@@ -1520,7 +1520,8 @@ async function triggerScan() {
     status.className = 'scan-spinner';
     status.textContent = 'Scanning...';
     try {
-        await fetch(`${API}/scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'all' }) });
+        const res = await fetch(`${API}/scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'all' }) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         pollScanStatus();
     } catch {
         status.className = '';
@@ -1554,6 +1555,10 @@ function pollScanStatus() {
 async function checkScanRunning() {
     try {
         const data = await fetchJSON(`${API}/scan/status`);
+        // Read-only servers do not register POST /scan; a visible button would only ever 404.
+        if (data.read_only) {
+            document.getElementById('btn-scan').hidden = true;
+        }
         if (data.running) {
             document.getElementById('btn-scan').disabled = true;
             document.getElementById('scan-status').className = 'scan-spinner';

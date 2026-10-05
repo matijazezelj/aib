@@ -511,7 +511,7 @@ func (s *Server) handleScanDiff(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request) {
 	running := s.scanner != nil && s.scanner.IsRunning()
-	writeJSON(w, http.StatusOK, map[string]any{"running": running})
+	writeJSON(w, http.StatusOK, map[string]any{"running": running, "read_only": s.readOnly})
 }
 
 func (s *Server) handleCycles(w http.ResponseWriter, r *http.Request) {
