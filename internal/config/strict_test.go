@@ -57,7 +57,8 @@ func TestLoad_ShippedConfigsAreStrictClean(t *testing.T) {
 		t.Skip("no configs dir")
 	}
 	for _, e := range entries {
-		if e.IsDir() || !(strings.HasSuffix(e.Name(), ".yaml") || strings.HasSuffix(e.Name(), ".example")) {
+		isConfig := strings.HasSuffix(e.Name(), ".yaml") || strings.HasSuffix(e.Name(), ".example")
+		if e.IsDir() || !isConfig {
 			continue
 		}
 		t.Run(e.Name(), func(t *testing.T) {
