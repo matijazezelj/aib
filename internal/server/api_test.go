@@ -414,6 +414,9 @@ func TestGetScanStatus(t *testing.T) {
 	if status["running"] != false {
 		t.Errorf("running = %v, want false", status["running"])
 	}
+	if status["read_only"] != false {
+		t.Errorf("read_only = %v, want false", status["read_only"])
+	}
 }
 
 func TestTriggerScan_NoScanner(t *testing.T) {
@@ -1610,6 +1613,17 @@ func TestTriggerScan_ReadOnly(t *testing.T) {
 	// In read-only mode, the POST route is not registered
 	if resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusOK {
 		t.Errorf("status = %d, expected non-success in read-only mode", resp.StatusCode)
+	}
+
+	statusResp, err := http.Get(tserver.URL + "/api/v1/scan/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close() //nolint:errcheck // test cleanup
+	var status map[string]any
+	_ = json.NewDecoder(statusResp.Body).Decode(&status)
+	if status["read_only"] != true {
+		t.Errorf("read_only = %v, want true", status["read_only"])
 	}
 }
 

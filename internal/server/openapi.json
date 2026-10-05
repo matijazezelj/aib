@@ -555,7 +555,7 @@
     "/api/v1/scan/status": {
       "get": {
         "summary": "Scan status",
-        "description": "Returns whether a scan is currently running.",
+        "description": "Returns whether a scan is currently running, and whether scan triggers are disabled (read-only mode).",
         "tags": ["Scans"],
         "responses": {
           "200": {
@@ -565,7 +565,8 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "running": { "type": "boolean" }
+                    "running": { "type": "boolean" },
+                    "read_only": { "type": "boolean" }
                   }
                 }
               }
