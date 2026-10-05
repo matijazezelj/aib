@@ -58,7 +58,15 @@ const ICON_CDN_BASE = 'https://cdn.simpleicons.org';
 const iconDataCache = new Map();
 
 /* ---------- Built-in AWS service icons (Simple Icons removed all Amazon icons) ---------- */
-const _bi = (svg) => 'data:image/svg+xml;base64,' + btoa(svg);
+// Icons that carry only a viewBox have no intrinsic size, so the canvas draws a
+// mis-scaled crop of them. Give them an explicit size taken from the viewBox.
+function withIntrinsicSize(svg) {
+    if (/<svg[^>]*\swidth=/.test(svg)) return svg;
+    const vb = svg.match(/viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) ([\d.]+)"/);
+    const [w, h] = vb ? [vb[1], vb[2]] : ['24', '24'];
+    return svg.replace('<svg', `<svg width="${w}" height="${h}"`);
+}
+const _bi = (svg) => 'data:image/svg+xml;base64,' + btoa(withIntrinsicSize(svg));
 const BUILTIN_ICONS = {
     /* generic AWS logo – stylised arrow/smile */
     _aws: _bi('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#c9d1d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16c4-2 8-2 10 0s6 2 10 0"/><path d="M6 4l6 8 6-8"/></svg>'),
@@ -692,7 +700,7 @@ async function fetchIconDataURI(slug) {
             return '';
         }
         const svg = await resp.text();
-        const dataURI = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+        const dataURI = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(withIntrinsicSize(svg))));
         iconDataCache.set(slug, dataURI);
         return dataURI;
     } catch {
@@ -734,7 +742,6 @@ async function applyOnlineIcons() {
                     'background-image': dataURI,
                     'background-image-opacity': 1,
                     'background-image-containment': 'inside',
-                    'background-fit': 'contain',
                     'background-width': '62%',
                     'background-height': '62%',
                 });
